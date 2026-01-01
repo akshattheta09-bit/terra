@@ -33,70 +33,83 @@ export const SCAN_PATHS = [
   '/sdcard/Download/',
 ];
 
-// UI Dimensions
+// ═══════════════════════════════════════════════════════════════════════════════
+// UI DIMENSIONS - Apple-Inspired Premium Spacing
+// Great breathing space, luxury feel
+// ═══════════════════════════════════════════════════════════════════════════════
 export const DIMENSIONS = {
-  // Spacing
+  // Spacing - More generous for premium feel
   spacing: {
-    xs: 4,
-    sm: 8,
+    xxs: 4,
+    xs: 8,
+    sm: 12,
     md: 16,
     lg: 24,
     xl: 32,
     xxl: 48,
+    xxxl: 64,
   },
   
-  // Border radius
+  // Border radius - Softer, more refined
   borderRadius: {
-    sm: 4,
-    md: 8,
-    lg: 12,
-    xl: 16,
+    xs: 4,
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 20,
+    xxl: 24,
     full: 9999,
   },
   
-  // Touch targets (minimum 48dp for accessibility)
+  // Touch targets (minimum 44dp for iOS, 48dp for Android)
   touchTarget: {
-    min: 48,
-    default: 56,
-    large: 64,
+    min: 44,
+    default: 48,
+    large: 56,
+    xl: 64,
   },
   
   // Icon sizes
   iconSize: {
-    sm: 16,
+    xs: 16,
+    sm: 20,
     md: 24,
-    lg: 32,
-    xl: 48,
+    lg: 28,
+    xl: 32,
+    xxl: 48,
   },
   
-  // Font sizes
+  // Font sizes - Apple Dynamic Type inspired
   fontSize: {
-    xs: 10,
-    sm: 12,
-    md: 14,
-    lg: 16,
+    xs: 11,
+    sm: 13,
+    md: 15,
+    lg: 17,
     xl: 20,
-    xxl: 24,
-    xxxl: 32,
+    xxl: 22,
+    xxxl: 28,
+    display: 34,
   },
   
-  // Component heights
-  header: 56,
-  tabBar: 64,
-  miniPlayer: 64,
-  listItem: 56,
-  listItemCompact: 48,
-  listItemDetailed: 72,
-  button: 48,
-  searchBar: 48,
+  // Component heights - More breathing room
+  header: 60,
+  headerLarge: 96,
+  tabBar: 83,       // iOS standard with home indicator
+  miniPlayer: 72,   // Larger for better touch
+  listItem: 64,     // More breathing room
+  listItemCompact: 56,
+  listItemDetailed: 80,
+  button: 50,
+  buttonLarge: 56,
+  searchBar: 52,
   
-  // Album art sizes
+  // Album art sizes - Larger for premium feel
   albumArt: {
-    thumbnail: 48,
-    small: 64,
-    medium: 120,
-    large: 200,
-    fullscreen: 300,
+    thumbnail: 56,
+    small: 72,
+    medium: 140,
+    large: 220,
+    fullscreen: 320,
   },
   
   // Video thumbnail sizes

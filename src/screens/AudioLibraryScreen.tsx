@@ -1,4 +1,7 @@
-// Audio Library Screen for Terra Media Player
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUDIO LIBRARY SCREEN - Premium Apple-Style Design
+// Terra Media Player - Luxury & Clean Interface
+// ═══════════════════════════════════════════════════════════════════════════════
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -8,6 +11,7 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppDispatch, useAppSelector } from '../hooks/useRedux';
@@ -22,25 +26,25 @@ import {
 } from '../store';
 import { Header, SearchBar, SongItem, ScanProgressModal } from '../components';
 import { AudioFile } from '../types/media';
-import { Colors } from '../utils/colors';
+import { Colors, Shadows, Typography } from '../utils/colors';
 import { DIMENSIONS } from '../utils/constants';
 
 type FilterType = 'all' | 'albums' | 'artists' | 'playlists' | 'recently_played' | 'most_played' | 'genres';
 
-const FILTERS: { key: FilterType; label: string }[] = [
-  { key: 'all', label: 'All Songs' },
-  { key: 'albums', label: 'Albums' },
-  { key: 'artists', label: 'Artists' },
-  { key: 'playlists', label: 'Playlists' },
-  { key: 'recently_played', label: 'Recent' },
-  { key: 'most_played', label: 'Top' },
-  { key: 'genres', label: 'Genres' },
+const FILTERS: { key: FilterType; label: string; icon: string }[] = [
+  { key: 'all', label: 'All', icon: '♫' },
+  { key: 'recently_played', label: 'Recent', icon: '🕐' },
+  { key: 'most_played', label: 'Top', icon: '⭐' },
+  { key: 'albums', label: 'Albums', icon: '💿' },
+  { key: 'artists', label: 'Artists', icon: '🎤' },
+  { key: 'playlists', label: 'Playlists', icon: '📝' },
 ];
 
 export const AudioLibraryScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const scrollY = new Animated.Value(0);
   
   const { allSongs, albums, artists, playlists, genres, filter } = useAppSelector(
     state => state.audio
@@ -119,7 +123,7 @@ export const AudioLibraryScreen: React.FC = () => {
     dispatch(setAudioFilter(newFilter));
   }, [dispatch]);
   
-  // Render filter chips
+  // Render filter chips - Premium pill style
   const renderFilterChips = () => (
     <View style={styles.filterContainer}>
       <FlatList
@@ -136,6 +140,7 @@ export const AudioLibraryScreen: React.FC = () => {
             onPress={() => handleFilterChange(item.key)}
             activeOpacity={0.7}
           >
+            <Text style={styles.filterChipIcon}>{item.icon}</Text>
             <Text
               style={[
                 styles.filterChipText,
@@ -151,20 +156,22 @@ export const AudioLibraryScreen: React.FC = () => {
     </View>
   );
   
-  // Render empty state
+  // Render premium empty state
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyIcon}>🎵</Text>
-      <Text style={styles.emptyTitle}>No Music Found</Text>
+      <View style={styles.emptyIconContainer}>
+        <Text style={styles.emptyIcon}>🎵</Text>
+      </View>
+      <Text style={styles.emptyTitle}>Your Music Library</Text>
       <Text style={styles.emptySubtitle}>
         {isPermissionDenied
-          ? 'Please grant storage permission to scan music files'
-          : 'Tap the button below to scan your device for music'}
+          ? 'Grant storage permission to access your music'
+          : 'Scan your device to discover your music collection'}
       </Text>
       <TouchableOpacity
         style={styles.scanButton}
         onPress={performFullScan}
-        activeOpacity={0.7}
+        activeOpacity={0.8}
       >
         <Text style={styles.scanButtonText}>Scan Music</Text>
       </TouchableOpacity>
@@ -172,26 +179,49 @@ export const AudioLibraryScreen: React.FC = () => {
   );
   
   // Render song item
-  const renderSongItem = useCallback(({ item }: { item: AudioFile }) => (
-    <SongItem
-      song={item}
-      onPress={handleSongPress}
-      onFavoritePress={handleFavoritePress}
-      onMorePress={handleMorePress}
-      isPlaying={item.id === currentTrackId}
-    />
+  const renderSongItem = useCallback(({ item, index }: { item: AudioFile; index: number }) => (
+    <Animated.View>
+      <SongItem
+        song={item}
+        onPress={handleSongPress}
+        onFavoritePress={handleFavoritePress}
+        onMorePress={handleMorePress}
+        isPlaying={item.id === currentTrackId}
+      />
+    </Animated.View>
   ), [currentTrackId, handleSongPress, handleFavoritePress, handleMorePress]);
+
+  // Item separator for visual breathing room
+  const ItemSeparator = () => <View style={styles.separator} />;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Header
-        title="Music"
-        subtitle={`${allSongs.length} songs`}
-        showSearch
-        onSearchPress={() => setIsSearching(!isSearching)}
-        rightIcon={<Text style={styles.headerIcon}>🔄</Text>}
-        onRightPress={performQuickScan}
-      />
+      {/* Premium Large Title Header */}
+      <View style={styles.headerContainer}>
+        <View style={styles.headerTop}>
+          <Text style={styles.headerGreeting}>Library</Text>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={() => setIsSearching(!isSearching)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.headerIcon}>🔍</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={performQuickScan}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.headerIcon}>↻</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        <Text style={styles.headerTitle}>Music</Text>
+        <Text style={styles.headerSubtitle}>
+          {allSongs.length} {allSongs.length === 1 ? 'song' : 'songs'}
+        </Text>
+      </View>
       
       {/* Search Bar */}
       {isSearching && (
@@ -214,6 +244,7 @@ export const AudioLibraryScreen: React.FC = () => {
         keyExtractor={item => item.id.toString()}
         renderItem={renderSongItem}
         ListEmptyComponent={renderEmpty}
+        ItemSeparatorComponent={ItemSeparator}
         refreshControl={
           <RefreshControl
             refreshing={false}
@@ -222,16 +253,21 @@ export const AudioLibraryScreen: React.FC = () => {
             colors={[Colors.primary]}
           />
         }
-        contentContainerStyle={
-          filteredSongs.length === 0 ? styles.emptyList : undefined
-        }
+        contentContainerStyle={[
+          styles.listContent,
+          filteredSongs.length === 0 && styles.emptyList,
+        ]}
         showsVerticalScrollIndicator={false}
-        initialNumToRender={20}
-        maxToRenderPerBatch={20}
+        initialNumToRender={15}
+        maxToRenderPerBatch={15}
         windowSize={10}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
       />
       
-      {/* Shuffle All FAB */}
+      {/* Premium Floating Shuffle Button */}
       {filteredSongs.length > 0 && (
         <TouchableOpacity
           style={styles.fab}
@@ -239,10 +275,12 @@ export const AudioLibraryScreen: React.FC = () => {
             const shuffled = [...filteredSongs].sort(() => Math.random() - 0.5);
             playTracks(shuffled, 0);
           }}
-          activeOpacity={0.8}
+          activeOpacity={0.85}
         >
-          <Text style={styles.fabIcon}>🔀</Text>
-          <Text style={styles.fabText}>Shuffle</Text>
+          <View style={styles.fabInner}>
+            <Text style={styles.fabIcon}>▶</Text>
+            <Text style={styles.fabText}>Shuffle All</Text>
+          </View>
         </TouchableOpacity>
       )}
       
@@ -257,98 +295,170 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  
+  // Premium Header
+  headerContainer: {
+    paddingHorizontal: DIMENSIONS.spacing.lg,
+    paddingTop: DIMENSIONS.spacing.md,
+    paddingBottom: DIMENSIONS.spacing.lg,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: DIMENSIONS.spacing.xs,
+  },
+  headerGreeting: {
+    ...Typography.subhead,
+    color: Colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: DIMENSIONS.spacing.sm,
+  },
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   headerIcon: {
-    fontSize: 20,
+    fontSize: 18,
   },
+  headerTitle: {
+    ...Typography.largeTitle,
+    color: Colors.textPrimary,
+    marginBottom: DIMENSIONS.spacing.xxs,
+  },
+  headerSubtitle: {
+    ...Typography.subhead,
+    color: Colors.textSecondary,
+  },
+  
+  // Search
   searchContainer: {
-    paddingHorizontal: DIMENSIONS.spacing.md,
-    paddingVertical: DIMENSIONS.spacing.sm,
+    paddingHorizontal: DIMENSIONS.spacing.lg,
+    paddingBottom: DIMENSIONS.spacing.md,
   },
+  
+  // Premium Filter Chips
   filterContainer: {
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
+    marginBottom: DIMENSIONS.spacing.sm,
   },
   filterList: {
-    paddingHorizontal: DIMENSIONS.spacing.md,
-    paddingVertical: DIMENSIONS.spacing.sm,
+    paddingHorizontal: DIMENSIONS.spacing.lg,
+    gap: DIMENSIONS.spacing.sm,
   },
   filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: DIMENSIONS.spacing.md,
     paddingVertical: DIMENSIONS.spacing.sm,
     borderRadius: DIMENSIONS.borderRadius.full,
     backgroundColor: Colors.surfaceLight,
     marginRight: DIMENSIONS.spacing.sm,
+    gap: DIMENSIONS.spacing.xs,
   },
   filterChipActive: {
     backgroundColor: Colors.primary,
   },
+  filterChipIcon: {
+    fontSize: 14,
+  },
   filterChipText: {
-    fontSize: DIMENSIONS.fontSize.sm,
+    ...Typography.footnote,
     color: Colors.textSecondary,
     fontWeight: '500',
   },
   filterChipTextActive: {
     color: Colors.white,
+    fontWeight: '600',
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: DIMENSIONS.spacing.xl,
+  
+  // List
+  listContent: {
+    paddingBottom: 140, // Space for FAB and mini player
+  },
+  separator: {
+    height: 1,
+    backgroundColor: Colors.divider,
+    marginLeft: DIMENSIONS.spacing.lg + DIMENSIONS.albumArt.thumbnail + DIMENSIONS.spacing.md,
   },
   emptyList: {
     flex: 1,
   },
+  
+  // Premium Empty State
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: DIMENSIONS.spacing.xxl,
+  },
+  emptyIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: Colors.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: DIMENSIONS.spacing.xl,
+    ...Shadows.md,
+  },
   emptyIcon: {
-    fontSize: 64,
-    marginBottom: DIMENSIONS.spacing.lg,
+    fontSize: 44,
   },
   emptyTitle: {
-    fontSize: DIMENSIONS.fontSize.xl,
-    fontWeight: '600',
+    ...Typography.title2,
     color: Colors.textPrimary,
     marginBottom: DIMENSIONS.spacing.sm,
   },
   emptySubtitle: {
-    fontSize: DIMENSIONS.fontSize.md,
+    ...Typography.body,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginBottom: DIMENSIONS.spacing.xl,
+    maxWidth: 280,
+    lineHeight: 24,
   },
   scanButton: {
     backgroundColor: Colors.primary,
     paddingHorizontal: DIMENSIONS.spacing.xl,
     paddingVertical: DIMENSIONS.spacing.md,
     borderRadius: DIMENSIONS.borderRadius.full,
+    ...Shadows.glow,
   },
   scanButtonText: {
-    fontSize: DIMENSIONS.fontSize.md,
-    fontWeight: '600',
+    ...Typography.headline,
     color: Colors.white,
   },
+  
+  // Premium Floating Action Button
   fab: {
     position: 'absolute',
-    bottom: DIMENSIONS.spacing.xl,
-    right: DIMENSIONS.spacing.xl,
-    backgroundColor: Colors.primary,
+    bottom: DIMENSIONS.spacing.xl + DIMENSIONS.miniPlayer,
+    alignSelf: 'center',
+    ...Shadows.glowStrong,
+  },
+  fabInner: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: Colors.primary,
     paddingHorizontal: DIMENSIONS.spacing.lg,
     paddingVertical: DIMENSIONS.spacing.md,
     borderRadius: DIMENSIONS.borderRadius.full,
-    elevation: 4,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    gap: DIMENSIONS.spacing.sm,
   },
   fabIcon: {
-    fontSize: 18,
-    marginRight: DIMENSIONS.spacing.sm,
+    fontSize: 14,
+    color: Colors.white,
   },
   fabText: {
-    fontSize: DIMENSIONS.fontSize.md,
-    fontWeight: '600',
+    ...Typography.headline,
     color: Colors.white,
   },
 });

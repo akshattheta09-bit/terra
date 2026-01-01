@@ -1,4 +1,7 @@
-// Now Playing Screen for Terra Media Player
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOW PLAYING SCREEN - Premium Apple Music-Style Full Screen Player
+// Terra Media Player - Luxury & Clean Interface
+// ═══════════════════════════════════════════════════════════════════════════════
 
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
@@ -16,19 +19,19 @@ import { useNavigation } from '@react-navigation/native';
 import { useAppDispatch, useAppSelector } from '../hooks/useRedux';
 import { useAudioPlayback } from '../hooks/useAudioPlayback';
 import { toggleFavorite, openAddToPlaylistModal } from '../store';
-import { Colors } from '../utils/colors';
+import { Colors, Shadows, Typography } from '../utils/colors';
 import { DIMENSIONS } from '../utils/constants';
 import { formatDuration } from '../utils/formatters';
 import { LoopMode } from '../types/playback';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ALBUM_ART_SIZE = SCREEN_WIDTH * 0.75;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const ALBUM_ART_SIZE = SCREEN_WIDTH - DIMENSIONS.spacing.xxl * 2;
 
 export const NowPlayingScreen: React.FC = () => {
   const navigation = useNavigation();
   const dispatch = useAppDispatch();
-  const rotateAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
   
   const {
     currentTrack,
@@ -52,36 +55,42 @@ export const NowPlayingScreen: React.FC = () => {
   
   const { allSongs } = useAppSelector(state => state.audio);
   
-  // Rotation animation for album art
+  // Pulse animation for playing state
   useEffect(() => {
     let animation: Animated.CompositeAnimation;
     
     if (isPlaying) {
       animation = Animated.loop(
-        Animated.timing(rotateAnim, {
-          toValue: 1,
-          duration: 20000,
-          useNativeDriver: true,
-        })
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.02,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+        ])
       );
       animation.start();
     } else {
-      rotateAnim.stopAnimation();
+      pulseAnim.setValue(1);
     }
     
-    return () => {
-      if (animation) {
-        animation.stop();
-      }
-    };
-  }, [isPlaying, rotateAnim]);
+    return () => animation?.stop();
+  }, [isPlaying, pulseAnim]);
   
   // Progress bar pan responder
   const progressPanResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
-        scaleAnim.setValue(1.1);
+        Animated.spring(scaleAnim, {
+          toValue: 1.2,
+          useNativeDriver: true,
+        }).start();
       },
       onPanResponderMove: (_, gestureState) => {
         const progressWidth = SCREEN_WIDTH - DIMENSIONS.spacing.xl * 2;
@@ -91,7 +100,10 @@ export const NowPlayingScreen: React.FC = () => {
         seekTo(newTime);
       },
       onPanResponderRelease: () => {
-        scaleAnim.setValue(1);
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+        }).start();
       },
     })
   ).current;
@@ -113,45 +125,38 @@ export const NowPlayingScreen: React.FC = () => {
   // Get loop mode icon
   const getLoopModeIcon = (mode: LoopMode) => {
     switch (mode) {
-      case 'all':
-        return '🔁';
-      case 'one':
-        return '🔂';
-      default:
-        return '↩️';
+      case 'all': return '🔁';
+      case 'one': return '🔂';
+      default: return '↩';
     }
   };
   
   // Calculate progress percentage
   const progressPercentage = duration > 0 ? (position / duration) * 100 : 0;
   
-  // Get rotation interpolation
-  const rotate = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-  
   // Get current track favorite status
   const currentSong = allSongs.find(s => s.id === currentTrack?.id);
   const isFavorite = currentSong?.isFavorite || false;
   
-  // Playback speed options
-  const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+  // Speed options
   const [showSpeedOptions, setShowSpeedOptions] = useState(false);
+  const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
   
   if (!currentTrack) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>🎵</Text>
-          <Text style={styles.emptyTitle}>No Track Playing</Text>
+          <View style={styles.emptyIconContainer}>
+            <Text style={styles.emptyIcon}>🎵</Text>
+          </View>
+          <Text style={styles.emptyTitle}>Nothing Playing</Text>
           <Text style={styles.emptySubtitle}>
-            Select a song from your library to start playing
+            Choose something from your library
           </Text>
           <TouchableOpacity
             style={styles.browseButton}
             onPress={() => navigation.goBack()}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
           >
             <Text style={styles.browseButtonText}>Browse Library</Text>
           </TouchableOpacity>
@@ -162,64 +167,82 @@ export const NowPlayingScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
+      {/* Premium Header - Minimal */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.headerButton}
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
         >
-          <Text style={styles.headerIcon}>▼</Text>
+          <Text style={styles.chevronIcon}>⌄</Text>
         </TouchableOpacity>
+        
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Now Playing</Text>
+          <Text style={styles.headerLabel}>PLAYING FROM</Text>
+          <Text style={styles.headerSource} numberOfLines={1}>
+            {currentTrack.album || 'Library'}
+          </Text>
         </View>
+        
         <TouchableOpacity
           style={styles.headerButton}
           onPress={handleAddToPlaylist}
           activeOpacity={0.7}
         >
-          <Text style={styles.headerIcon}>⋮</Text>
+          <Text style={styles.menuIcon}>•••</Text>
         </TouchableOpacity>
       </View>
       
-      {/* Album Art */}
-      <View style={styles.albumArtContainer}>
+      {/* Premium Album Art - Large with Shadow */}
+      <View style={styles.albumArtSection}>
         <Animated.View
           style={[
-            styles.albumArtWrapper,
-            { transform: [{ rotate }] },
+            styles.albumArtContainer,
+            { transform: [{ scale: pulseAnim }] },
           ]}
         >
           {currentTrack.albumArt ? (
             <Image
               source={{ uri: currentTrack.albumArt }}
               style={styles.albumArt}
+              resizeMode="cover"
             />
           ) : (
             <View style={[styles.albumArt, styles.placeholderArt]}>
-              <Text style={styles.placeholderIcon}>🎵</Text>
+              <Text style={styles.placeholderIcon}>♪</Text>
             </View>
           )}
         </Animated.View>
       </View>
       
-      {/* Track Info */}
-      <View style={styles.trackInfo}>
-        <Text style={styles.trackTitle} numberOfLines={1}>
-          {currentTrack.title || currentTrack.fileName}
-        </Text>
-        <Text style={styles.trackArtist} numberOfLines={1}>
-          {currentTrack.artist || 'Unknown Artist'}
-        </Text>
-        <Text style={styles.trackAlbum} numberOfLines={1}>
-          {currentTrack.album || 'Unknown Album'}
-        </Text>
+      {/* Track Info Section */}
+      <View style={styles.trackInfoSection}>
+        <View style={styles.trackInfoRow}>
+          <View style={styles.trackTextContainer}>
+            <Text style={styles.trackTitle} numberOfLines={1}>
+              {currentTrack.title || currentTrack.fileName}
+            </Text>
+            <Text style={styles.trackArtist} numberOfLines={1}>
+              {currentTrack.artist || 'Unknown Artist'}
+            </Text>
+          </View>
+          
+          {/* Favorite Button */}
+          <TouchableOpacity
+            style={styles.favoriteButton}
+            onPress={handleFavoritePress}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.favoriteIcon, isFavorite && styles.favoriteActive]}>
+              {isFavorite ? '♥' : '♡'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
       
-      {/* Progress Bar */}
-      <View style={styles.progressContainer} {...progressPanResponder.panHandlers}>
-        <View style={styles.progressBar}>
+      {/* Premium Progress Bar */}
+      <View style={styles.progressSection} {...progressPanResponder.panHandlers}>
+        <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${progressPercentage}%` }]} />
           <Animated.View
             style={[
@@ -233,86 +256,70 @@ export const NowPlayingScreen: React.FC = () => {
         </View>
         <View style={styles.progressTime}>
           <Text style={styles.timeText}>{formatDuration(position)}</Text>
-          <Text style={styles.timeText}>{formatDuration(duration)}</Text>
+          <Text style={styles.timeText}>-{formatDuration(Math.max(0, duration - position))}</Text>
         </View>
       </View>
       
-      {/* Controls */}
-      <View style={styles.controls}>
-        {/* Secondary Controls */}
-        <View style={styles.secondaryControls}>
-          <TouchableOpacity
-            style={[styles.secondaryButton, isShuffleEnabled && styles.activeButton]}
-            onPress={toggleShuffle}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.secondaryIcon}>🔀</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => setShowSpeedOptions(!showSpeedOptions)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.speedText}>{playbackSpeed}x</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.secondaryButton, loopMode !== 'off' && styles.activeButton]}
-            onPress={cycleLoopMode}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.secondaryIcon}>{getLoopModeIcon(loopMode)}</Text>
-          </TouchableOpacity>
-        </View>
-        
-        {/* Main Controls */}
+      {/* Main Playback Controls */}
+      <View style={styles.controlsSection}>
         <View style={styles.mainControls}>
           <TouchableOpacity
-            style={styles.controlButton}
+            style={styles.skipButton}
             onPress={skipToPrevious}
             activeOpacity={0.7}
           >
-            <Text style={styles.controlIcon}>⏮</Text>
+            <Text style={styles.skipIcon}>⏮</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
             style={styles.playButton}
             onPress={togglePlayPause}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            <Text style={styles.playIcon}>
-              {isLoading ? '⏳' : isPlaying ? '⏸' : '▶️'}
-            </Text>
+            <View style={styles.playButtonInner}>
+              <Text style={styles.playIcon}>
+                {isLoading ? '●' : isPlaying ? '⏸' : '▶'}
+              </Text>
+            </View>
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={styles.controlButton}
+            style={styles.skipButton}
             onPress={skipToNext}
             activeOpacity={0.7}
           >
-            <Text style={styles.controlIcon}>⏭</Text>
+            <Text style={styles.skipIcon}>⏭</Text>
           </TouchableOpacity>
         </View>
+      </View>
+      
+      {/* Secondary Controls - Bottom */}
+      <View style={styles.secondaryControls}>
+        <TouchableOpacity
+          style={[styles.secondaryButton, isShuffleEnabled && styles.activeButton]}
+          onPress={toggleShuffle}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.secondaryIcon, isShuffleEnabled && styles.activeIcon]}>🔀</Text>
+        </TouchableOpacity>
         
-        {/* Tertiary Controls */}
-        <View style={styles.tertiaryControls}>
-          <TouchableOpacity
-            style={[styles.tertiaryButton, isFavorite && styles.favoriteActive]}
-            onPress={handleFavoritePress}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.tertiaryIcon}>{isFavorite ? '❤️' : '🤍'}</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.tertiaryButton}
-            onPress={handleAddToPlaylist}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.tertiaryIcon}>➕</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => setShowSpeedOptions(!showSpeedOptions)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.speedText}>{playbackSpeed}×</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.secondaryButton, loopMode !== 'off' && styles.activeButton]}
+          onPress={cycleLoopMode}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.secondaryIcon, loopMode !== 'off' && styles.activeIcon]}>
+            {getLoopModeIcon(loopMode)}
+          </Text>
+        </TouchableOpacity>
       </View>
       
       {/* Speed Options Modal */}
@@ -333,13 +340,11 @@ export const NowPlayingScreen: React.FC = () => {
                 }}
                 activeOpacity={0.7}
               >
-                <Text
-                  style={[
-                    styles.speedOptionText,
-                    playbackSpeed === speed && styles.speedOptionTextActive,
-                  ]}
-                >
-                  {speed}x
+                <Text style={[
+                  styles.speedOptionText,
+                  playbackSpeed === speed && styles.speedOptionTextActive,
+                ]}>
+                  {speed}×
                 </Text>
               </TouchableOpacity>
             ))}
@@ -355,49 +360,65 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: DIMENSIONS.spacing.md,
-    paddingVertical: DIMENSIONS.spacing.sm,
+    paddingHorizontal: DIMENSIONS.spacing.lg,
+    paddingVertical: DIMENSIONS.spacing.md,
   },
   headerButton: {
-    padding: DIMENSIONS.spacing.sm,
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  headerIcon: {
-    fontSize: 24,
-    color: Colors.textPrimary,
+  chevronIcon: {
+    fontSize: 28,
+    color: Colors.textSecondary,
+    fontWeight: '300',
+  },
+  menuIcon: {
+    fontSize: 18,
+    color: Colors.textSecondary,
+    letterSpacing: -1,
   },
   headerCenter: {
     flex: 1,
     alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: DIMENSIONS.fontSize.md,
-    fontWeight: '600',
-    color: Colors.textPrimary,
+  headerLabel: {
+    ...Typography.caption2,
+    color: Colors.textTertiary,
+    letterSpacing: 1,
+    marginBottom: 2,
   },
-  albumArtContainer: {
+  headerSource: {
+    ...Typography.footnote,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  
+  // Album Art Section
+  albumArtSection: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: DIMENSIONS.spacing.xxl,
+    paddingBottom: DIMENSIONS.spacing.lg,
   },
-  albumArtWrapper: {
+  albumArtContainer: {
     width: ALBUM_ART_SIZE,
     height: ALBUM_ART_SIZE,
-    borderRadius: ALBUM_ART_SIZE / 2,
-    overflow: 'hidden',
-    elevation: 10,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
+    borderRadius: DIMENSIONS.borderRadius.xl,
+    ...Shadows.xl,
   },
   albumArt: {
     width: '100%',
     height: '100%',
-    borderRadius: ALBUM_ART_SIZE / 2,
+    borderRadius: DIMENSIONS.borderRadius.xl,
   },
   placeholderArt: {
     backgroundColor: Colors.surfaceLight,
@@ -406,53 +427,69 @@ const styles = StyleSheet.create({
   },
   placeholderIcon: {
     fontSize: 80,
+    color: Colors.textTertiary,
   },
-  trackInfo: {
-    alignItems: 'center',
+  
+  // Track Info
+  trackInfoSection: {
     paddingHorizontal: DIMENSIONS.spacing.xl,
     marginBottom: DIMENSIONS.spacing.lg,
   },
+  trackInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  trackTextContainer: {
+    flex: 1,
+  },
   trackTitle: {
-    fontSize: DIMENSIONS.fontSize.xl,
-    fontWeight: '700',
+    ...Typography.title2,
     color: Colors.textPrimary,
-    marginBottom: DIMENSIONS.spacing.xs,
-    textAlign: 'center',
+    marginBottom: 4,
   },
   trackArtist: {
-    fontSize: DIMENSIONS.fontSize.md,
-    color: Colors.primary,
-    marginBottom: DIMENSIONS.spacing.xs,
-    textAlign: 'center',
-  },
-  trackAlbum: {
-    fontSize: DIMENSIONS.fontSize.sm,
+    ...Typography.body,
     color: Colors.textSecondary,
-    textAlign: 'center',
   },
-  progressContainer: {
+  favoriteButton: {
+    width: 48,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  favoriteIcon: {
+    fontSize: 28,
+    color: Colors.textTertiary,
+  },
+  favoriteActive: {
+    color: Colors.favorite,
+  },
+  
+  // Progress
+  progressSection: {
     paddingHorizontal: DIMENSIONS.spacing.xl,
-    marginBottom: DIMENSIONS.spacing.md,
+    marginBottom: DIMENSIONS.spacing.lg,
   },
-  progressBar: {
-    height: 4,
-    backgroundColor: Colors.surfaceLight,
-    borderRadius: 2,
+  progressTrack: {
+    height: 6,
+    backgroundColor: Colors.progressTrack,
+    borderRadius: 3,
     position: 'relative',
   },
   progressFill: {
     height: '100%',
     backgroundColor: Colors.primary,
-    borderRadius: 2,
+    borderRadius: 3,
   },
   progressKnob: {
     position: 'absolute',
-    top: -6,
+    top: -5,
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.white,
     marginLeft: -8,
+    ...Shadows.sm,
   },
   progressTime: {
     flexDirection: 'row',
@@ -460,145 +497,110 @@ const styles = StyleSheet.create({
     marginTop: DIMENSIONS.spacing.sm,
   },
   timeText: {
-    fontSize: DIMENSIONS.fontSize.xs,
-    color: Colors.textSecondary,
+    ...Typography.caption1,
+    color: Colors.textTertiary,
   },
-  controls: {
+  
+  // Main Controls
+  controlsSection: {
     paddingHorizontal: DIMENSIONS.spacing.xl,
-    paddingBottom: DIMENSIONS.spacing.xl,
-  },
-  secondaryControls: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: DIMENSIONS.spacing.lg,
-  },
-  secondaryButton: {
-    padding: DIMENSIONS.spacing.md,
-    marginHorizontal: DIMENSIONS.spacing.lg,
-  },
-  secondaryIcon: {
-    fontSize: 24,
-    color: Colors.textSecondary,
-  },
-  speedText: {
-    fontSize: DIMENSIONS.fontSize.md,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  activeButton: {
-    backgroundColor: Colors.primary + '30',
-    borderRadius: DIMENSIONS.borderRadius.full,
+    marginBottom: DIMENSIONS.spacing.xl,
   },
   mainControls: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: DIMENSIONS.spacing.lg,
+    gap: DIMENSIONS.spacing.xxl,
   },
-  controlButton: {
-    padding: DIMENSIONS.spacing.lg,
+  skipButton: {
+    width: 64,
+    height: 64,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  controlIcon: {
+  skipIcon: {
     fontSize: 36,
     color: Colors.textPrimary,
   },
   playButton: {
     width: 80,
     height: 80,
-    borderRadius: 40,
-    backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: DIMENSIONS.spacing.xl,
-    elevation: 4,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+  },
+  playButtonInner: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: Colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Shadows.lg,
   },
   playIcon: {
-    fontSize: 36,
-    color: Colors.white,
+    fontSize: 32,
+    color: Colors.black,
+    marginLeft: 2,
   },
-  tertiaryControls: {
+  
+  // Secondary Controls
+  secondaryControls: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: DIMENSIONS.spacing.xxl,
+    paddingBottom: DIMENSIONS.spacing.xl,
+    gap: DIMENSIONS.spacing.xxl,
   },
-  tertiaryButton: {
-    padding: DIMENSIONS.spacing.md,
-    marginHorizontal: DIMENSIONS.spacing.lg,
+  secondaryButton: {
+    width: 56,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  tertiaryIcon: {
-    fontSize: 24,
-    color: Colors.textSecondary,
-  },
-  favoriteActive: {
-    backgroundColor: Colors.error + '30',
-    borderRadius: DIMENSIONS.borderRadius.full,
-  },
-  speedModal: {
-    position: 'absolute',
-    bottom: 200,
-    left: DIMENSIONS.spacing.xl,
-    right: DIMENSIONS.spacing.xl,
-    backgroundColor: Colors.surface,
+  activeButton: {
+    backgroundColor: Colors.blue10,
     borderRadius: DIMENSIONS.borderRadius.lg,
-    padding: DIMENSIONS.spacing.lg,
-    elevation: 8,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
   },
-  speedModalTitle: {
-    fontSize: DIMENSIONS.fontSize.md,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: DIMENSIONS.spacing.md,
+  secondaryIcon: {
+    fontSize: 22,
+    color: Colors.textTertiary,
   },
-  speedOptions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    flexWrap: 'wrap',
+  activeIcon: {
+    color: Colors.primary,
   },
-  speedOption: {
-    paddingHorizontal: DIMENSIONS.spacing.md,
-    paddingVertical: DIMENSIONS.spacing.sm,
-    borderRadius: DIMENSIONS.borderRadius.sm,
-    marginVertical: DIMENSIONS.spacing.xs,
-  },
-  speedOptionActive: {
-    backgroundColor: Colors.primary,
-  },
-  speedOptionText: {
-    fontSize: DIMENSIONS.fontSize.sm,
+  speedText: {
+    ...Typography.subheadBold,
     color: Colors.textSecondary,
-    fontWeight: '500',
   },
-  speedOptionTextActive: {
-    color: Colors.white,
-  },
+  
+  // Empty State
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: DIMENSIONS.spacing.xl,
+    padding: DIMENSIONS.spacing.xxl,
+  },
+  emptyIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: Colors.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: DIMENSIONS.spacing.xl,
+    ...Shadows.md,
   },
   emptyIcon: {
-    fontSize: 80,
-    marginBottom: DIMENSIONS.spacing.lg,
+    fontSize: 56,
   },
   emptyTitle: {
-    fontSize: DIMENSIONS.fontSize.xl,
-    fontWeight: '600',
+    ...Typography.title2,
     color: Colors.textPrimary,
     marginBottom: DIMENSIONS.spacing.sm,
   },
   emptySubtitle: {
-    fontSize: DIMENSIONS.fontSize.md,
+    ...Typography.body,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginBottom: DIMENSIONS.spacing.xl,
@@ -608,11 +610,52 @@ const styles = StyleSheet.create({
     paddingHorizontal: DIMENSIONS.spacing.xl,
     paddingVertical: DIMENSIONS.spacing.md,
     borderRadius: DIMENSIONS.borderRadius.full,
+    ...Shadows.glow,
   },
   browseButtonText: {
-    fontSize: DIMENSIONS.fontSize.md,
-    fontWeight: '600',
+    ...Typography.headline,
     color: Colors.white,
+  },
+  
+  // Speed Modal
+  speedModal: {
+    position: 'absolute',
+    bottom: 150,
+    left: DIMENSIONS.spacing.xl,
+    right: DIMENSIONS.spacing.xl,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: DIMENSIONS.borderRadius.xl,
+    padding: DIMENSIONS.spacing.lg,
+    ...Shadows.xl,
+  },
+  speedModalTitle: {
+    ...Typography.headline,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: DIMENSIONS.spacing.md,
+  },
+  speedOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: DIMENSIONS.spacing.sm,
+  },
+  speedOption: {
+    paddingHorizontal: DIMENSIONS.spacing.md,
+    paddingVertical: DIMENSIONS.spacing.sm,
+    borderRadius: DIMENSIONS.borderRadius.md,
+    backgroundColor: Colors.surfaceLight,
+  },
+  speedOptionActive: {
+    backgroundColor: Colors.primary,
+  },
+  speedOptionText: {
+    ...Typography.subhead,
+    color: Colors.textSecondary,
+  },
+  speedOptionTextActive: {
+    color: Colors.white,
+    fontWeight: '600',
   },
 });
 

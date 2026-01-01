@@ -16,7 +16,7 @@ import {
 } from '../screens';
 import { MiniPlayer } from '../components';
 import { useAppSelector } from '../hooks/useRedux';
-import { Colors, Shadows } from '../utils/colors';
+import { Colors, Shadows, Typography } from '../utils/colors';
 import { DIMENSIONS } from '../utils/constants';
 
 // Custom Dark Theme
@@ -175,32 +175,32 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.black,
     borderTopWidth: 0.5,
     borderTopColor: Colors.border,
-    height: Platform.OS === 'ios' ? 88 : 70,
-    paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 8,
-    ...Shadows.md,
+    height: Platform.OS === 'ios' ? DIMENSIONS.tabBar : 72,
+    paddingTop: DIMENSIONS.spacing.sm,
+    paddingBottom: Platform.OS === 'ios' ? 34 : DIMENSIONS.spacing.sm,
+    paddingHorizontal: DIMENSIONS.spacing.md,
   },
   tabBarWithMiniPlayer: {
-    marginBottom: 72, // Height of MiniPlayer + spacing
+    // Mini player appears above tab bar
   },
   tabIconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4,
+    minWidth: 60,
   },
   tabIcon: {
-    fontSize: 22,
+    fontSize: 24,
     marginBottom: 4,
-    opacity: 0.6,
+    opacity: 0.5,
   },
   tabIconFocused: {
     opacity: 1,
   },
   tabLabel: {
-    fontSize: 10,
+    ...Typography.caption2,
     color: Colors.tabBarInactive,
     fontWeight: '500',
-    letterSpacing: 0.2,
   },
   tabLabelFocused: {
     color: Colors.primary,

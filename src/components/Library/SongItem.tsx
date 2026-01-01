@@ -1,4 +1,7 @@
-// Song Item Component for Terra Media Player
+// ═══════════════════════════════════════════════════════════════════════════════
+// SONG ITEM - Premium Apple-Style List Item
+// Terra Media Player - Luxury & Clean Interface
+// ═══════════════════════════════════════════════════════════════════════════════
 
 import React, { memo } from 'react';
 import {
@@ -9,7 +12,7 @@ import {
   Image,
 } from 'react-native';
 import { AudioFile } from '../../types/media';
-import { Colors } from '../../utils/colors';
+import { Colors, Shadows, Typography } from '../../utils/colors';
 import { DIMENSIONS } from '../../utils/constants';
 import { formatDuration, formatArtist, formatTitle } from '../../utils/formatters';
 
@@ -38,22 +41,19 @@ export const SongItem: React.FC<SongItemProps> = memo(({
   showArtist = true,
   compact = false,
 }) => {
-  const itemHeight = compact ? DIMENSIONS.listItemCompact : DIMENSIONS.listItem;
-
   return (
     <TouchableOpacity
       style={[
         styles.container,
-        { height: itemHeight },
         isPlaying && styles.playingContainer,
       ]}
       onPress={() => onPress(song)}
       onLongPress={() => onLongPress?.(song)}
-      activeOpacity={0.7}
+      activeOpacity={0.6}
     >
-      {/* Album Art */}
+      {/* Album Art with Premium Styling */}
       {showAlbumArt && (
-        <View style={styles.albumArtContainer}>
+        <View style={[styles.albumArtContainer, isPlaying && styles.albumArtPlaying]}>
           {song.albumArt ? (
             <Image
               source={{ uri: song.albumArt }}
@@ -62,18 +62,22 @@ export const SongItem: React.FC<SongItemProps> = memo(({
             />
           ) : (
             <View style={[styles.albumArt, styles.placeholderArt]}>
-              <Text style={styles.placeholderIcon}>🎵</Text>
+              <Text style={styles.placeholderIcon}>♪</Text>
             </View>
           )}
           {isPlaying && (
             <View style={styles.playingIndicator}>
-              <Text style={styles.playingIcon}>▶</Text>
+              <View style={styles.playingBars}>
+                <View style={[styles.bar, styles.bar1]} />
+                <View style={[styles.bar, styles.bar2]} />
+                <View style={[styles.bar, styles.bar3]} />
+              </View>
             </View>
           )}
         </View>
       )}
 
-      {/* Song Info */}
+      {/* Song Info with Premium Typography */}
       <View style={styles.infoContainer}>
         <Text
           style={[styles.title, isPlaying && styles.playingText]}
@@ -85,44 +89,29 @@ export const SongItem: React.FC<SongItemProps> = memo(({
         {showArtist && (
           <Text style={styles.artist} numberOfLines={1}>
             {formatArtist(song.artist)}
-            {song.album && ` • ${song.album}`}
+            {song.album && ` · ${song.album}`}
           </Text>
         )}
       </View>
 
-      {/* Right Section */}
+      {/* Right Section - Premium Actions */}
       <View style={styles.rightSection}>
         {/* Duration */}
         {showDuration && song.duration > 0 && (
-          <Text style={styles.duration}>
+          <Text style={[styles.duration, isPlaying && styles.durationPlaying]}>
             {formatDuration(song.duration)}
           </Text>
-        )}
-        
-        {/* Favorite Button */}
-        {onFavoritePress && (
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => onFavoritePress(song)}
-            activeOpacity={0.7}
-          >
-            <Text style={[
-              styles.favoriteIcon,
-              song.isFavorite && styles.favoriteActive,
-            ]}>
-              {song.isFavorite ? '❤️' : '🤍'}
-            </Text>
-          </TouchableOpacity>
         )}
         
         {/* More Button */}
         {onMorePress && (
           <TouchableOpacity
-            style={styles.actionButton}
+            style={styles.moreButton}
             onPress={() => onMorePress(song)}
-            activeOpacity={0.7}
+            activeOpacity={0.6}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Text style={styles.moreIcon}>⋮</Text>
+            <Text style={styles.moreIcon}>•••</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -136,20 +125,29 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: DIMENSIONS.spacing.md,
+    paddingHorizontal: DIMENSIONS.spacing.lg,
+    paddingVertical: DIMENSIONS.spacing.sm,
+    minHeight: DIMENSIONS.listItem,
     backgroundColor: Colors.background,
   },
   playingContainer: {
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: Colors.blue10,
   },
+  
+  // Album Art
   albumArtContainer: {
     position: 'relative',
     marginRight: DIMENSIONS.spacing.md,
+    borderRadius: DIMENSIONS.borderRadius.md,
+    overflow: 'hidden',
+  },
+  albumArtPlaying: {
+    ...Shadows.glow,
   },
   albumArt: {
     width: DIMENSIONS.albumArt.thumbnail,
     height: DIMENSIONS.albumArt.thumbnail,
-    borderRadius: DIMENSIONS.borderRadius.sm,
+    borderRadius: DIMENSIONS.borderRadius.md,
   },
   placeholderArt: {
     backgroundColor: Colors.surfaceLight,
@@ -157,7 +155,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   placeholderIcon: {
-    fontSize: 20,
+    fontSize: 24,
+    color: Colors.textTertiary,
   },
   playingIndicator: {
     position: 'absolute',
@@ -165,56 +164,77 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: Colors.overlayLight,
-    borderRadius: DIMENSIONS.borderRadius.sm,
+    backgroundColor: Colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: DIMENSIONS.borderRadius.md,
   },
-  playingIcon: {
-    fontSize: 16,
-    color: Colors.primary,
+  playingBars: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 20,
+    gap: 3,
   },
+  bar: {
+    width: 4,
+    backgroundColor: Colors.primary,
+    borderRadius: 2,
+  },
+  bar1: {
+    height: 12,
+  },
+  bar2: {
+    height: 18,
+  },
+  bar3: {
+    height: 8,
+  },
+  
+  // Info Section
   infoContainer: {
     flex: 1,
     justifyContent: 'center',
+    paddingRight: DIMENSIONS.spacing.sm,
   },
   title: {
-    fontSize: DIMENSIONS.fontSize.md,
-    fontWeight: '500',
+    ...Typography.body,
     color: Colors.textPrimary,
+    fontWeight: '500',
   },
   playingText: {
     color: Colors.primary,
   },
   artist: {
-    fontSize: DIMENSIONS.fontSize.sm,
+    ...Typography.footnote,
     color: Colors.textSecondary,
-    marginTop: 2,
+    marginTop: 3,
   },
+  
+  // Right Section
   rightSection: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: DIMENSIONS.spacing.sm,
   },
   duration: {
-    fontSize: DIMENSIONS.fontSize.sm,
+    ...Typography.caption1,
     color: Colors.textTertiary,
-    marginRight: DIMENSIONS.spacing.sm,
+    minWidth: 40,
+    textAlign: 'right',
   },
-  actionButton: {
-    width: 36,
-    height: 36,
+  durationPlaying: {
+    color: Colors.primary,
+  },
+  moreButton: {
+    width: DIMENSIONS.touchTarget.min,
+    height: DIMENSIONS.touchTarget.min,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  favoriteIcon: {
-    fontSize: 18,
-  },
-  favoriteActive: {
-    color: Colors.accent,
-  },
   moreIcon: {
-    fontSize: 20,
-    color: Colors.textSecondary,
+    fontSize: 16,
+    color: Colors.textTertiary,
+    letterSpacing: -2,
   },
 });
 
