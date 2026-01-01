@@ -1,0 +1,67 @@
+{
+  "expo": {
+    "name": "Terra",
+    "slug": "terra",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#121212"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.terra.mediaplayer"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#121212"
+      },
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.WAKE_LOCK",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.terra.mediaplayer"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Terra to access your photos for video thumbnails.",
+          "savePhotosPermission": "Allow Terra to save media files.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow Terra to access the microphone for audio recording."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "aa64ab4c-4f2c-4c72-a5dd-bc760b22926a"
+      }
+    }
+  }
+}
