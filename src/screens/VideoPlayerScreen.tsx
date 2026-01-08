@@ -13,7 +13,6 @@ import {
   ActivityIndicator,
   BackHandler,
   Animated,
-  PanResponder,
   Modal,
   Platform,
   Alert,
@@ -50,6 +49,21 @@ import {
   previousVideo,
 } from '../services/VideoPlaybackService';
 import ProScrubber from '../components/Player/ProScrubber';
+
+// Gesture & Animation Imports
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+// Use alias for Reanimated to avoid conflict with React Native Animated if needed, 
+// though RN Animated is used for Controls Opacity.
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  runOnJS,
+  interpolate,
+  Extrapolate,
+  cancelAnimation,
+} from 'react-native-reanimated';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -112,15 +126,16 @@ export const VideoPlayerScreen: React.FC = () => {
   const [shuffleEnabled, setShuffleEnabled] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<AspectRatioMode>('contain');
 
-  // Volume & Brightness (Simulated for gesture visual feedback)
+  // Volume & Brightness
   const [volume, setVolume] = useState(1);
   const [brightness, setBrightness] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
 
-  // Gestures
+  // Gesture UI
   const [gestureType, setGestureType] = useState<GestureType>('none');
   const [gestureValue, setGestureValue] = useState(0);
   const [seekPreview, setSeekPreview] = useState(0);
+  const [showDoubleTap, setShowDoubleTap] = useState<'left' | 'right' | null>(null);
 
   // Subtitles
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
@@ -136,13 +151,229 @@ export const VideoPlayerScreen: React.FC = () => {
 
   // Refs
   const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
+  // Using RN Animated for controls fade (as requested/legacy, kept for stability)
   const controlsOpacity = useRef(new Animated.Value(1)).current;
-  const gestureStartValue = useRef(0);
-  const lastTapTime = useRef(0);
-  const [showDoubleTap, setShowDoubleTap] = useState<'left' | 'right' | null>(null);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Init
+  // Reanimated Shared Values
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+  const focalX = useSharedValue(0);
+  const focalY = useSharedValue(0);
+
+  const volumeSv = useSharedValue(1);
+  const brightnessSv = useSharedValue(1);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Control Helpers
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const resetControlsTimeout = useCallback(() => {
+    if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+    if (!controlsLocked) {
+      controlsTimeout.current = setTimeout(() => {
+        if (isPlaying) hideControls();
+      }, 4000);
+    }
+  }, [isPlaying, controlsLocked]);
+
+  const showControlsHandler = useCallback(() => {
+    setShowControls(true);
+    Animated.timing(controlsOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    resetControlsTimeout();
+  }, [controlsOpacity, resetControlsTimeout]);
+
+  const hideControls = useCallback(() => {
+    if (controlsLocked) return;
+    Animated.timing(controlsOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setShowControls(false);
+    });
+  }, [controlsOpacity, controlsLocked]);
+
+  const handlePlayPause = () => {
+    if (player) {
+      if (isPlaying) player.pause();
+      else player.play();
+    }
+    resetControlsTimeout();
+  };
+
+  const handleSeekForward = () => {
+    if (player) {
+      const newTime = Math.min(player.currentTime + 10, player.duration);
+      player.currentTime = newTime;
+      setShowDoubleTap('right');
+      setTimeout(() => setShowDoubleTap(null), 600);
+    }
+    resetControlsTimeout();
+  };
+
+  const handleSeekBackward = () => {
+    if (player) {
+      const newTime = Math.max(player.currentTime - 10, 0);
+      player.currentTime = newTime;
+      setShowDoubleTap('left');
+      setTimeout(() => setShowDoubleTap(null), 600);
+    }
+    resetControlsTimeout();
+  };
+
+  const handleNextVideo = () => {
+    const v = nextVideo();
+    if (v) setCurrentIndex(videoQueue.findIndex(i => i.id === v.id));
+    resetControlsTimeout();
+  };
+
+  const handlePreviousVideo = () => {
+    const v = previousVideo();
+    if (v) setCurrentIndex(videoQueue.findIndex(i => i.id === v.id));
+    resetControlsTimeout();
+  };
+
+  const handlePiP = async () => {
+    if (player) {
+      if (Platform.OS === 'ios') {
+        (player as any).startPictureInPicture();
+      } else {
+        Alert.alert("PiP Mode", "Minimize the app to enter Picture-in-Picture.");
+      }
+    }
+  };
+
+  const parseSRT = (content: string): Subtitle[] => {
+    const subs: Subtitle[] = [];
+    const blocks = content.trim().split(/\n\s*\n/);
+    blocks.forEach((block, index) => {
+      const lines = block.split('\n');
+      if (lines.length >= 3) {
+        const timeLine = lines[1];
+        const text = lines.slice(2).join('\n');
+        const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+        if (timeMatch) {
+          const startTime = parseInt(timeMatch[1]) * 3600000 + parseInt(timeMatch[2]) * 60000 + parseInt(timeMatch[3]) * 1000 + parseInt(timeMatch[4]);
+          const endTime = parseInt(timeMatch[5]) * 3600000 + parseInt(timeMatch[6]) * 60000 + parseInt(timeMatch[7]) * 1000 + parseInt(timeMatch[8]);
+          subs.push({ id: index, startTime, endTime, text });
+        }
+      }
+    });
+    return subs;
+  };
+
+  const handleVideoEnded = useCallback(() => {
+    if (loopMode === 'one') {
+      player?.replay();
+    } else if (loopMode === 'all' || currentIndex < videoQueue.length - 1) {
+      handleNextVideo();
+    }
+  }, [loopMode, currentIndex, videoQueue, player]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Gestures
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const pinchGesture = Gesture.Pinch()
+    .onStart((e) => {
+      savedScale.value = scale.value;
+      focalX.value = e.focalX;
+      focalY.value = e.focalY;
+    })
+    .onUpdate((e) => {
+      scale.value = savedScale.value * e.scale;
+    })
+    .onEnd(() => {
+      if (scale.value < 1) {
+        scale.value = withSpring(1);
+        translateX.value = withSpring(0);
+        translateY.value = withSpring(0);
+      } else {
+        savedScale.value = scale.value;
+      }
+    });
+
+  const panZoomGesture = Gesture.Pan()
+    .minPointers(2)
+    .onStart(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    })
+    .onUpdate((e) => {
+      if (scale.value > 1) {
+        translateX.value = savedTranslateX.value + e.translationX;
+        translateY.value = savedTranslateY.value + e.translationY;
+      }
+    });
+
+  const zoomGestures = Gesture.Simultaneous(pinchGesture, panZoomGesture);
+
+  const controlsPanGesture = Gesture.Pan()
+    .onStart((e, context: any) => {
+      if (controlsLocked) return;
+      const screenThird = windowWidth / 3;
+      if (e.x < screenThird) {
+        context.type = 'brightness';
+        context.startVal = brightnessSv.value;
+        runOnJS(setGestureType)('brightness');
+      } else if (e.x > windowWidth - screenThird) {
+        context.type = 'volume';
+        context.startVal = volumeSv.value;
+        runOnJS(setGestureType)('volume');
+      } else {
+        context.type = 'none';
+      }
+    })
+    .onUpdate((e, context: any) => {
+      if (controlsLocked || context.type === 'none') return;
+      const delta = -e.translationY / 200;
+
+      if (context.type === 'brightness') {
+        const newVal = Math.max(0, Math.min(1, context.startVal + delta));
+        brightnessSv.value = newVal;
+        runOnJS(setGestureValue)(newVal);
+        runOnJS(setBrightness)(newVal);
+      } else if (context.type === 'volume') {
+        const newVal = Math.max(0, Math.min(1, context.startVal + delta));
+        volumeSv.value = newVal;
+        runOnJS(setGestureValue)(newVal);
+        runOnJS(setVolume)(newVal);
+        if (player) runOnJS(() => { player.volume = newVal; })();
+      }
+    })
+    .onEnd(() => {
+      runOnJS(setGestureType)('none');
+    });
+
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd((e) => {
+      if (controlsLocked) return;
+      const screenThird = windowWidth / 3;
+      if (e.x < screenThird) {
+        runOnJS(handleSeekBackward)();
+      } else if (e.x > windowWidth - screenThird) {
+        runOnJS(handleSeekForward)();
+      }
+    });
+
+  const singleTapGesture = Gesture.Tap()
+    .requireExternalGestureToFail(doubleTapGesture)
+    .onEnd(() => {
+      if (showControls) runOnJS(hideControls)();
+      else runOnJS(showControlsHandler)();
+    });
+
+  const composedGestures = Gesture.Race(
+    zoomGestures,
+    Gesture.Exclusive(doubleTapGesture, singleTapGesture, controlsPanGesture)
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Effects
   // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -176,17 +407,12 @@ export const VideoPlayerScreen: React.FC = () => {
       setSubtitles([]);
       setCurrentSubtitle(null);
 
-      // Simple Resume Logic
       if (video.lastWatchedPosition > 5000 && video.lastWatchedPosition < video.duration * 0.95) {
         setResumePosition(video.lastWatchedPosition);
         setShowResumeModal(true);
       }
     }
   }, [currentIndex, videoQueue, dispatch]);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Player Setup
-  // ─────────────────────────────────────────────────────────────────────────
 
   const videoSource = currentVideo?.filePath || null;
   const player = useVideoPlayer(videoSource, (player) => {
@@ -199,28 +425,21 @@ export const VideoPlayerScreen: React.FC = () => {
     }
   });
 
-  // Helper to sync state from player
   useEffect(() => {
     if (!player) return;
-
-    // Use interval for smooth progress if native events lag
     const interval = setInterval(() => {
       if (player.status !== 'readyToPlay') return;
-
       const currentPos = player.currentTime * 1000;
       const totalDur = player.duration * 1000;
 
-      // Optimization: Avoid unnecessary re-renders
       setPosition(prev => {
         if (Math.abs(prev - currentPos) < 1000 && isPlaying) return prev;
         return currentPos;
       });
-
       setDuration(totalDur > 0 ? totalDur : 0);
       setIsPlaying(player.playing);
       setIsLoading(false);
 
-      // Subtitles
       if (subtitles.length > 0) {
         const activeSub = subtitles.find(
           sub => currentPos >= sub.startTime + subtitleDelay &&
@@ -228,229 +447,23 @@ export const VideoPlayerScreen: React.FC = () => {
         );
         setCurrentSubtitle(activeSub ? activeSub.text : null);
       }
-
     }, 1000);
 
     const subEnd = player.addListener('playToEnd', () => {
       handleVideoEnded();
     });
+    return () => { clearInterval(interval); subEnd.remove(); };
+  }, [player, loopMode, subtitles, subtitleDelay, currentIndex, videoQueue, handleVideoEnded]);
 
-    return () => {
-      clearInterval(interval);
-      subEnd.remove();
+  const videoAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { translateX: translateX.value },
+        { translateY: translateY.value },
+        { scale: scale.value },
+      ],
     };
-  }, [player, loopMode, subtitles, subtitleDelay]);
-
-  // Helper for SRT
-  const parseSRT = (content: string): Subtitle[] => {
-    const subs: Subtitle[] = [];
-    const blocks = content.trim().split(/\n\s*\n/);
-    blocks.forEach((block, index) => {
-      const lines = block.split('\n');
-      if (lines.length >= 3) {
-        const timeLine = lines[1];
-        const text = lines.slice(2).join('\n');
-        const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
-        if (timeMatch) {
-          const startTime = parseInt(timeMatch[1]) * 3600000 + parseInt(timeMatch[2]) * 60000 + parseInt(timeMatch[3]) * 1000 + parseInt(timeMatch[4]);
-          const endTime = parseInt(timeMatch[5]) * 3600000 + parseInt(timeMatch[6]) * 60000 + parseInt(timeMatch[7]) * 1000 + parseInt(timeMatch[8]);
-          subs.push({ id: index, startTime, endTime, text });
-        }
-      }
-    });
-    return subs;
-  };
-
-  const handleVideoEnded = useCallback(() => {
-    if (loopMode === 'one') {
-      player?.replay();
-    } else if (loopMode === 'all' || currentIndex < videoQueue.length - 1) {
-      handleNextVideo();
-    }
-  }, [loopMode, currentIndex, videoQueue.length, player]);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Gestures (The Fix)
-  // ─────────────────────────────────────────────────────────────────────────
-
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => !controlsLocked,
-    onMoveShouldSetPanResponder: (_, gestureState) => {
-      if (controlsLocked) return false;
-      return Math.abs(gestureState.dy) > 10 || Math.abs(gestureState.dx) > 20;
-    },
-
-    onPanResponderGrant: (evt, gestureState) => {
-      const { locationX } = evt.nativeEvent;
-      const screenThird = windowWidth / 3;
-
-      if (Math.abs(gestureState.dy) > Math.abs(gestureState.dx)) {
-        // Vertical - Volume / Brightness
-        if (locationX < screenThird) {
-          setGestureType('brightness');
-          gestureStartValue.current = brightness;
-        } else if (locationX > windowWidth - screenThird) {
-          setGestureType('volume');
-          gestureStartValue.current = volume;
-        }
-      } else {
-        // Horizontal - Seek
-        setGestureType('seek');
-        gestureStartValue.current = position; // current pos in ms
-        setSeekPreview(position);
-      }
-    },
-
-    onPanResponderMove: (_, gestureState) => {
-      const sensitivity = 0.005; // for vol/bright
-
-      if (gestureType === 'brightness') {
-        const newValue = Math.max(0, Math.min(1, gestureStartValue.current - gestureState.dy * sensitivity));
-        setBrightness(newValue);
-        setGestureValue(newValue);
-      } else if (gestureType === 'volume') {
-        const newValue = Math.max(0, Math.min(1, gestureStartValue.current - gestureState.dy * sensitivity));
-        setVolume(newValue);
-        player && (player.volume = newValue);
-        setGestureValue(newValue);
-      } else if (gestureType === 'seek') {
-        const seekSensitivity = 150; // ms per pixel moved roughly
-        const deltaMs = gestureState.dx * seekSensitivity;
-        const newPos = Math.max(0, Math.min(duration, gestureStartValue.current + deltaMs));
-        setSeekPreview(newPos);
-        setGestureValue(newPos / duration);
-      }
-    },
-
-    onPanResponderRelease: (_, gestureState) => {
-      // Check if it was a TAP (no movement)
-      if (Math.abs(gestureState.dx) < 5 && Math.abs(gestureState.dy) < 5 && gestureType === 'none') {
-        // It was a tap!
-        handleTapInteraction(gestureState.x0); // Pass X coordinate
-      } else {
-        // It was a gesture
-        if (gestureType === 'seek' && player) {
-          player.currentTime = seekPreview / 1000;
-        }
-        setGestureType('none');
-      }
-    },
-
-    // Reset if cancelled
-    onPanResponderTerminate: () => setGestureType('none'),
-
-  }), [controlsLocked, brightness, volume, position, duration, player, gestureType, seekPreview, windowWidth]);
-
-
-  // Unifying Tap & Double Tap Logic
-  const handleTapInteraction = (x: number) => {
-    const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
-    const screenThird = windowWidth / 3;
-
-    if (now - lastTapTime.current < DOUBLE_TAP_DELAY) {
-      // DOUBLE TAP DETECTED
-      if (x < screenThird) {
-        handleSeekBackward();
-        setShowDoubleTap('left');
-      } else if (x > windowWidth - screenThird) {
-        handleSeekForward();
-        setShowDoubleTap('right');
-      }
-      setTimeout(() => setShowDoubleTap(null), 600);
-      lastTapTime.current = 0; // reset
-    } else {
-      // SINGLE TAP
-      lastTapTime.current = now;
-      // Wait to see if it becomes a double tap? 
-      // For responsiveness, we toggle controls immediately if it's the center, 
-      // OR we wait. Let's toggle controls but if double tap happens we ignore the toggle.
-      // Actually, better to just toggle controls.
-      if (showControls) {
-        hideControls();
-      } else {
-        showControlsHandler();
-      }
-    }
-  };
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Control Logic
-  // ─────────────────────────────────────────────────────────────────────────
-
-  const resetControlsTimeout = useCallback(() => {
-    if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
-    if (!controlsLocked) {
-      controlsTimeout.current = setTimeout(() => {
-        if (isPlaying) hideControls();
-      }, 4000);
-    }
-  }, [isPlaying, controlsLocked]);
-
-  const showControlsHandler = useCallback(() => {
-    setShowControls(true); // Mount 
-    Animated.timing(controlsOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-    resetControlsTimeout();
-  }, [controlsOpacity, resetControlsTimeout]);
-
-  const hideControls = useCallback(() => {
-    if (controlsLocked) return;
-    Animated.timing(controlsOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-      setShowControls(false); // Unmount after fade
-    });
-  }, [controlsOpacity, controlsLocked]);
-
-  const handlePlayPause = () => {
-    if (player) {
-      if (isPlaying) player.pause();
-      else player.play();
-    }
-    resetControlsTimeout();
-  };
-
-  const handleSeekForward = () => {
-    if (player) {
-      const newTime = Math.min(player.currentTime + 10, player.duration);
-      player.currentTime = newTime;
-    }
-    resetControlsTimeout();
-  };
-
-  const handleSeekBackward = () => {
-    if (player) {
-      const newTime = Math.max(player.currentTime - 10, 0);
-      player.currentTime = newTime;
-    }
-    resetControlsTimeout();
-  };
-
-  const handleNextVideo = () => {
-    const v = nextVideo();
-    if (v) setCurrentIndex(videoQueue.findIndex(i => i.id === v.id));
-    resetControlsTimeout();
-  };
-
-  const handlePreviousVideo = () => {
-    const v = previousVideo();
-    if (v) setCurrentIndex(videoQueue.findIndex(i => i.id === v.id));
-    resetControlsTimeout();
-  };
-
-  const handlePiP = async () => {
-    if (player) {
-      if (Platform.OS === 'ios') {
-        // iOS often requires explicit start
-        (player as any).startPictureInPicture();
-      } else {
-        // Android usually enters PiP on minimize if allowsPictureInPicture is true (which it is)
-        Alert.alert("PiP Mode", "Minimize the app to enter Picture-in-Picture.");
-      }
-    }
-  };
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Render Helpers
-  // ─────────────────────────────────────────────────────────────────────────
+  });
 
   const getLoopIconName = () => {
     if (loopMode === 'one') return 'repeat-once';
@@ -460,291 +473,277 @@ export const VideoPlayerScreen: React.FC = () => {
 
   if (!currentVideo) return <View style={styles.container} />;
 
-  // Seek Slider Calculation
-  const sliderWidth = (progressPercentage: number) => isNaN(progressPercentage) ? 0 : progressPercentage;
-
   return (
-    <View style={styles.container}>
-      <StatusBar hidden />
+    <GestureDetector gesture={composedGestures}>
+      <View style={styles.container}>
+        <StatusBar hidden />
 
-      {/* ──────────────── Video Layer ──────────────── */}
-      <View style={styles.videoContainer} {...panResponder.panHandlers}>
-        <VideoView
-          style={StyleSheet.absoluteFill}
-          player={player}
-          contentFit={aspectRatio}
-          nativeControls={false}
-          allowsPictureInPicture
-        />
-        {/* Embedded Subtitles */}
-        {currentSubtitle && (
-          <View style={styles.subtitleOverlay}>
-            <Text style={styles.subtitleText}>{currentSubtitle}</Text>
+        <Reanimated.View style={[styles.videoContainer, videoAnimatedStyle]}>
+          <VideoView
+            style={StyleSheet.absoluteFill}
+            player={player}
+            contentFit={aspectRatio}
+            nativeControls={false}
+            allowsPictureInPicture
+          />
+          {currentSubtitle && (
+            <View style={styles.subtitleOverlay}>
+              <Text style={styles.subtitleText}>{currentSubtitle}</Text>
+            </View>
+          )}
+        </Reanimated.View>
+
+        {gestureType !== 'none' && (
+          <View style={styles.gestureOverlay} pointerEvents="none">
+            <View style={styles.gestureIndicator}>
+              <MaterialCommunityIcons
+                name={gestureType === 'brightness' ? 'brightness-6' : (gestureType === 'volume' ? 'volume-high' : 'clock-time-four-outline')}
+                size={40} color="white"
+              />
+              {gestureType === 'seek' ? (
+                <Text style={styles.gestureText}>{formatDuration(seekPreview)}</Text>
+              ) : (
+                <View style={styles.gestureBarContainer}>
+                  <View style={[styles.gestureBarFill, { width: `${gestureValue * 100}%` }]} />
+                </View>
+              )}
+            </View>
           </View>
         )}
-      </View>
 
-      {/* ──────────────── Gesture Visuals ──────────────── */}
-      {/* These need box-none to pass touches if they happened to overlay something important, but mostly they are purely visual */}
-      {gestureType !== 'none' && (
-        <View style={styles.gestureOverlay} pointerEvents="none">
-          <View style={styles.gestureIndicator}>
-            <MaterialCommunityIcons
-              name={gestureType === 'brightness' ? 'brightness-6' : (gestureType === 'volume' ? 'volume-high' : 'clock-time-four-outline')}
-              size={40} color="white"
-            />
-            {gestureType === 'seek' ? (
-              <Text style={styles.gestureText}>{formatDuration(seekPreview)}</Text>
-            ) : (
-              <View style={styles.gestureBarContainer}>
-                <View style={[styles.gestureBarFill, { width: `${gestureValue * 100}%` }]} />
+        {showDoubleTap && (
+          <View style={[styles.doubleTapIndicator, showDoubleTap === 'left' ? styles.dTapLeft : styles.dTapRight]} pointerEvents="none">
+            <MaterialCommunityIcons name={showDoubleTap === 'left' ? "rewind-10" : "fast-forward-10"} size={40} color="white" />
+            <Text style={styles.dTapText}>10s</Text>
+          </View>
+        )}
+
+        {/* Controls Overlay */}
+        {showControls && (
+          <Animated.View style={[styles.controlsOverlay, { opacity: controlsOpacity }]} pointerEvents="box-none">
+
+            {/* Top Bar */}
+            <View style={[styles.topBar, { paddingTop: insets.top > 20 ? insets.top : 20 }]} pointerEvents="box-none">
+              <View style={styles.topGradient} pointerEvents="none" />
+              <View style={styles.topContent}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
+                  <Ionicons name="arrow-back" size={28} color="white" />
+                </TouchableOpacity>
+
+                <View style={styles.metaContainer} pointerEvents="none">
+                  <Text style={styles.videoTitle} numberOfLines={1}>{currentVideo.title || currentVideo.fileName}</Text>
+                  <Text style={styles.queueInfo}>{currentIndex + 1} / {videoQueue.length}</Text>
+                </View>
+
+                <View style={styles.rightActions}>
+                  <TouchableOpacity onPress={handlePiP} style={styles.iconBtn}>
+                    <MaterialIcons name="picture-in-picture-alt" size={24} color="white" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setShowQueueModal(true)} style={styles.iconBtn}>
+                    <MaterialIcons name="playlist-play" size={28} color="white" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setShowSpeedModal(true)} style={styles.iconBtn}>
+                    <Text style={styles.speedText}>{playbackSpeed}x</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* Center Controls */}
+            {!controlsLocked && (
+              <View style={styles.centerControls} pointerEvents="box-none">
+                <TouchableOpacity onPress={handlePreviousVideo} style={styles.skipBtn}>
+                  <Ionicons name="play-skip-back" size={36} color="white" />
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handleSeekBackward} style={styles.rwBtn}>
+                  <MaterialCommunityIcons name="rewind-10" size={32} color="white" />
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handlePlayPause} style={styles.playPauseBtn}>
+                  <Ionicons name={isPlaying ? "pause" : "play"} size={50} color="white" style={{ paddingLeft: isPlaying ? 0 : 4 }} />
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handleSeekForward} style={styles.rwBtn}>
+                  <MaterialCommunityIcons name="fast-forward-10" size={32} color="white" />
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handleNextVideo} style={styles.skipBtn}>
+                  <Ionicons name="play-skip-forward" size={36} color="white" />
+                </TouchableOpacity>
               </View>
             )}
-          </View>
-        </View>
-      )}
 
-      {showDoubleTap && (
-        <View style={[styles.doubleTapIndicator, showDoubleTap === 'left' ? styles.dTapLeft : styles.dTapRight]} pointerEvents="none">
-          <MaterialCommunityIcons name={showDoubleTap === 'left' ? "rewind-10" : "fast-forward-10"} size={40} color="white" />
-          <Text style={styles.dTapText}>10s</Text>
-        </View>
-      )}
-
-      {/* ──────────────── Controls Overlay ──────────────── */}
-      {/* pointerEvents="box-none" is CRITICAL to let empty space touches fall through to PanResponder */}
-      {showControls && (
-        <Animated.View style={[styles.controlsOverlay, { opacity: controlsOpacity }]} pointerEvents="box-none">
-
-          {/* Top Bar */}
-          <View style={[styles.topBar, { paddingTop: insets.top > 20 ? insets.top : 20 }]} pointerEvents="box-none">
-            <View style={styles.topGradient} pointerEvents="none" />
-            <View style={styles.topContent}>
-              <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
-                <Ionicons name="arrow-back" size={28} color="white" />
-              </TouchableOpacity>
-
-              <View style={styles.metaContainer} pointerEvents="none">
-                <Text style={styles.videoTitle} numberOfLines={1}>{currentVideo.title || currentVideo.fileName}</Text>
-                <Text style={styles.queueInfo}>{currentIndex + 1} / {videoQueue.length}</Text>
-              </View>
-
-              <View style={styles.rightActions}>
-                <TouchableOpacity onPress={handlePiP} style={styles.iconBtn}>
-                  <MaterialIcons name="picture-in-picture-alt" size={24} color="white" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowQueueModal(true)} style={styles.iconBtn}>
-                  <MaterialIcons name="playlist-play" size={28} color="white" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowSpeedModal(true)} style={styles.iconBtn}>
-                  <Text style={styles.speedText}>{playbackSpeed}x</Text>
+            {/* Lock Button */}
+            {controlsLocked && (
+              <View style={styles.centerLocked} pointerEvents="box-none">
+                <TouchableOpacity onPress={() => { setControlsLocked(false); showControlsHandler(); }} style={styles.unlockBtn}>
+                  <MaterialCommunityIcons name="lock" size={32} color="white" />
+                  <Text style={styles.unlockText}>Unlock</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </View>
+            )}
 
-          {/* Center Controls */}
-          {!controlsLocked && (
-            <View style={styles.centerControls} pointerEvents="box-none">
-              <TouchableOpacity onPress={handlePreviousVideo} style={styles.skipBtn}>
-                <Ionicons name="play-skip-back" size={36} color="white" />
-              </TouchableOpacity>
+            {/* Bottom Bar */}
+            {!controlsLocked && (
+              <View style={[styles.bottomBar, { paddingBottom: insets.bottom || 20 }]} pointerEvents="box-none">
+                <View style={styles.bottomGradient} pointerEvents="none" />
 
-              <TouchableOpacity onPress={handleSeekBackward} style={styles.rwBtn}>
-                <MaterialCommunityIcons name="rewind-10" size={32} color="white" />
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={handlePlayPause} style={styles.playPauseBtn}>
-                <Ionicons name={isPlaying ? "pause" : "play"} size={50} color="white" style={{ paddingLeft: isPlaying ? 0 : 4 }} />
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={handleSeekForward} style={styles.rwBtn}>
-                <MaterialCommunityIcons name="fast-forward-10" size={32} color="white" />
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={handleNextVideo} style={styles.skipBtn}>
-                <Ionicons name="play-skip-forward" size={36} color="white" />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Lock Button (Centered when locked) */}
-          {controlsLocked && (
-            <View style={styles.centerLocked} pointerEvents="box-none">
-              <TouchableOpacity onPress={() => { setControlsLocked(false); showControlsHandler(); }} style={styles.unlockBtn}>
-                <MaterialCommunityIcons name="lock" size={32} color="white" />
-                <Text style={styles.unlockText}>Unlock</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Bottom Bar */}
-          {!controlsLocked && (
-            <View style={[styles.bottomBar, { paddingBottom: insets.bottom || 20 }]} pointerEvents="box-none">
-              <View style={styles.bottomGradient} pointerEvents="none" />
-
-              {/* Seek Bar */}
-              <View style={styles.progressRow}>
-                <Text style={styles.timeText}>{formatDuration(position)}</Text>
-                <View style={[styles.sliderContainer, { marginHorizontal: 0 }]}>
-                  <ProScrubber
-                    duration={duration > 0 ? duration : 1}
-                    currentTime={position}
-                    onSeekStart={() => {
-                      // Optional: Reset controls timeout so they don't fade while seeking
-                      if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
-                      // Don't pause here if you want audio to continue, or pause if you want "scrubbing" behavior
-                    }}
-                    onSeekEnd={(time) => {
-                      if (player) {
-                        player.currentTime = time / 1000;
-                      }
-                      resetControlsTimeout();
-                    }}
-                  />
-                </View>
-                <Text style={styles.timeText}>{formatDuration(duration)}</Text>
-              </View>
-
-              {/* Bottom Actions */}
-              <View style={styles.bottomActions}>
-                <TouchableOpacity activeOpacity={0.7} onPress={() => setControlsLocked(true)}>
-                  <MaterialCommunityIcons name="lock-open-outline" size={24} color="white" />
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={() => dispatch(toggleVideoFavorite(currentVideo.id))}>
-                  <MaterialIcons name={currentVideo.isFavorite ? "favorite" : "favorite-border"} size={24} color={currentVideo.isFavorite ? Colors.primary : "white"} />
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={() => {
-                  const newAspect = aspectRatio === 'contain' ? 'cover' : 'contain';
-                  setAspectRatio(newAspect);
-                }}>
-                  <MaterialCommunityIcons name={aspectRatio === 'cover' ? "arrow-expand-all" : "arrow-collapse-all"} size={24} color="white" />
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={() => {
-                  const modes: LoopMode[] = ['none', 'all', 'one'];
-                  const idx = modes.indexOf(loopMode);
-                  setLoopMode(modes[(idx + 1) % 3]);
-                }}>
-                  <MaterialCommunityIcons name={getLoopIconName()} size={24} color={loopMode !== 'none' ? Colors.primary : "white"} />
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={() => {
-                  const newState = toggleServiceShuffle();
-                  setShuffleEnabled(newState);
-                  // Refresh queue
-                  const qs = getQueueState();
-                  setVideoQueueState(qs.queue);
-                }}>
-                  <MaterialCommunityIcons name="shuffle" size={24} color={shuffleEnabled ? Colors.primary : "white"} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-        </Animated.View>
-      )}
-
-      {/* ──────────────── Queue Modal ──────────────── */}
-      <Modal visible={showQueueModal} transparent animationType="slide" onRequestClose={() => setShowQueueModal(false)}>
-        <View style={styles.queueModalFill}>
-          <View style={[styles.queueContainer, { marginTop: insets.top + 20 }]}>
-            <View style={styles.queueHeader}>
-              <Text style={styles.queueTitle}>Up Next</Text>
-              <TouchableOpacity onPress={() => setShowQueueModal(false)}>
-                <Ionicons name="close" size={24} color="white" />
-              </TouchableOpacity>
-            </View>
-            <FlatList
-              data={videoQueue}
-              keyExtractor={item => item.id.toString()}
-              renderItem={({ item, index }) => (
-                <TouchableOpacity
-                  style={[styles.queueItem, item.id === currentVideo.id && styles.activeQueueItem]}
-                  onPress={() => {
-                    setCurrentIndex(index);
-                    setShowQueueModal(false);
-                  }}
-                >
-                  <Image source={{ uri: item.thumbnail }} style={styles.queueThumb} />
-                  <View style={styles.queueMeta}>
-                    <Text style={[styles.queueName, item.id === currentVideo.id && styles.activeQueueText]} numberOfLines={1}>{item.fileName}</Text>
-                    <Text style={styles.queueDuration}>{formatDuration(item.duration)}</Text>
+                {/* Seek Bar */}
+                <View style={styles.progressRow}>
+                  <Text style={styles.timeText}>{formatDuration(position)}</Text>
+                  <View style={[styles.sliderContainer, { marginHorizontal: 0 }]}>
+                    <ProScrubber
+                      duration={duration > 0 ? duration : 1}
+                      currentTime={position}
+                      onSeekStart={() => {
+                        if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+                      }}
+                      onSeekEnd={(time) => {
+                        if (player) {
+                          player.currentTime = time / 1000;
+                        }
+                        resetControlsTimeout();
+                      }}
+                    />
                   </View>
-                  {item.id === currentVideo.id && <Ionicons name="volume-high" size={20} color={Colors.primary} />}
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </View>
-      </Modal>
+                  <Text style={styles.timeText}>{formatDuration(duration)}</Text>
+                </View>
 
-      {/* ──────────────── Subtitle & Audio Modal ──────────────── */}
-      <Modal visible={showSubtitleModal} transparent animationType="fade" onRequestClose={() => setShowSubtitleModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Subtitles & Audio</Text>
+                {/* Bottom Actions */}
+                <View style={styles.bottomActions}>
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => setControlsLocked(true)}>
+                    <MaterialCommunityIcons name="lock-open-outline" size={24} color="white" />
+                  </TouchableOpacity>
 
-            {/* Subtitle Delay */}
-            <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Subtitle Delay: {subtitleDelay / 1000}s</Text>
-              <View style={styles.rowControls}>
-                <TouchableOpacity onPress={() => setSubtitleDelay(prev => prev - 100)} style={styles.adjustBtn}>
-                  <MaterialCommunityIcons name="minus" size={24} color="white" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setSubtitleDelay(prev => prev + 100)} style={styles.adjustBtn}>
-                  <MaterialCommunityIcons name="plus" size={24} color="white" />
+                  <TouchableOpacity onPress={() => dispatch(toggleVideoFavorite(currentVideo.id))}>
+                    <MaterialIcons name={currentVideo.isFavorite ? "favorite" : "favorite-border"} size={24} color={currentVideo.isFavorite ? Colors.primary : "white"} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => {
+                    const newAspect = aspectRatio === 'contain' ? 'cover' : 'contain';
+                    setAspectRatio(newAspect);
+                  }}>
+                    <MaterialCommunityIcons name={aspectRatio === 'cover' ? "arrow-expand-all" : "arrow-collapse-all"} size={24} color="white" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => {
+                    const modes: LoopMode[] = ['none', 'all', 'one'];
+                    const idx = modes.indexOf(loopMode);
+                    setLoopMode(modes[(idx + 1) % 3]);
+                  }}>
+                    <MaterialCommunityIcons name={getLoopIconName()} size={24} color={loopMode !== 'none' ? Colors.primary : "white"} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => {
+                    const newState = toggleServiceShuffle();
+                    setShuffleEnabled(newState);
+                    const qs = getQueueState();
+                    setVideoQueueState(qs.queue);
+                  }}>
+                    <MaterialCommunityIcons name="shuffle" size={24} color={shuffleEnabled ? Colors.primary : "white"} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+          </Animated.View>
+        )}
+
+        {/* Modal Queue */}
+        <Modal visible={showQueueModal} transparent animationType="slide" onRequestClose={() => setShowQueueModal(false)}>
+          <View style={styles.queueModalFill}>
+            <View style={[styles.queueContainer, { marginTop: insets.top + 20 }]}>
+              <View style={styles.queueHeader}>
+                <Text style={styles.queueTitle}>Up Next</Text>
+                <TouchableOpacity onPress={() => setShowQueueModal(false)}>
+                  <Ionicons name="close" size={24} color="white" />
                 </TouchableOpacity>
               </View>
+              <FlatList
+                data={videoQueue}
+                keyExtractor={item => item.id.toString()}
+                renderItem={({ item, index }) => (
+                  <TouchableOpacity
+                    style={[styles.queueItem, item.id === currentVideo.id && styles.activeQueueItem]}
+                    onPress={() => {
+                      setCurrentIndex(index);
+                      setShowQueueModal(false);
+                    }}
+                  >
+                    <Image source={{ uri: item.thumbnail }} style={styles.queueThumb} />
+                    <View style={styles.queueMeta}>
+                      <Text style={[styles.queueName, item.id === currentVideo.id && styles.activeQueueText]} numberOfLines={1}>{item.fileName}</Text>
+                      <Text style={styles.queueDuration}>{formatDuration(item.duration)}</Text>
+                    </View>
+                    {item.id === currentVideo.id && <Ionicons name="volume-high" size={20} color={Colors.primary} />}
+                  </TouchableOpacity>
+                )}
+              />
             </View>
-
-            {/* Pick Subtitle */}
-            <TouchableOpacity style={styles.modalActionBtn} onPress={() => {
-              DocumentPicker.getDocumentAsync({
-                type: ['application/x-subrip', 'text/vtt', 'text/plain'],
-                copyToCacheDirectory: true,
-              }).then(async (result) => {
-                if (!result.canceled && result.assets && result.assets.length > 0) {
-                  const fileContent = await FileSystem.readAsStringAsync(result.assets[0].uri);
-                  const parsed = parseSRT(fileContent); // Need to move parseSRT out or ensure it's available
-                  setSubtitles(parsed);
-                  setShowSubtitleModal(false);
-                }
-              });
-            }}>
-              <MaterialCommunityIcons name="file-document-outline" size={20} color="black" />
-              <Text style={styles.modalActionBtnText}>Load External Subtitle</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setShowSubtitleModal(false)}>
-              <Text style={styles.closeBtnText}>Done</Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-      {/* ──────────────── Speed Modal ──────────────── */}
-      <Modal visible={showSpeedModal} transparent animationType="fade" onRequestClose={() => setShowSpeedModal(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSpeedModal(false)}>
-          <View style={styles.speedList}>
-            <Text style={styles.speedTitle}>Playback Speed</Text>
-            {PLAYBACK_SPEEDS.map(speed => (
-              <TouchableOpacity key={speed} style={styles.speedItem} onPress={() => {
-                setPlaybackSpeed(speed);
-                player && (player.playbackRate = speed);
-                setShowSpeedModal(false);
+        {/* Modal Subtitle */}
+        <Modal visible={showSubtitleModal} transparent animationType="fade" onRequestClose={() => setShowSubtitleModal(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Subtitles & Audio</Text>
+              <View style={styles.settingRow}>
+                <Text style={styles.settingLabel}>Subtitle Delay: {subtitleDelay / 1000}s</Text>
+                <View style={styles.rowControls}>
+                  <TouchableOpacity onPress={() => setSubtitleDelay(prev => prev - 100)} style={styles.adjustBtn}>
+                    <MaterialCommunityIcons name="minus" size={24} color="white" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setSubtitleDelay(prev => prev + 100)} style={styles.adjustBtn}>
+                    <MaterialCommunityIcons name="plus" size={24} color="white" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <TouchableOpacity style={styles.modalActionBtn} onPress={() => {
+                DocumentPicker.getDocumentAsync({
+                  type: ['application/x-subrip', 'text/vtt', 'text/plain'],
+                  copyToCacheDirectory: true,
+                }).then(async (result) => {
+                  if (!result.canceled && result.assets && result.assets.length > 0) {
+                    const fileContent = await FileSystem.readAsStringAsync(result.assets[0].uri);
+                    const parsed = parseSRT(fileContent);
+                    setSubtitles(parsed);
+                    setShowSubtitleModal(false);
+                  }
+                });
               }}>
-                <Text style={[styles.speedItemText, playbackSpeed === speed && styles.activeSpeedText]}>{speed}x</Text>
-                {playbackSpeed === speed && <Ionicons name="checkmark" size={20} color={Colors.primary} />}
+                <MaterialCommunityIcons name="file-document-outline" size={20} color="black" />
+                <Text style={styles.modalActionBtnText}>Load External Subtitle</Text>
               </TouchableOpacity>
-            ))}
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setShowSubtitleModal(false)}>
+                <Text style={styles.closeBtnText}>Done</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </TouchableOpacity>
-      </Modal>
+        </Modal>
 
-    </View>
+        {/* Modal Speed */}
+        <Modal visible={showSpeedModal} transparent animationType="fade" onRequestClose={() => setShowSpeedModal(false)}>
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSpeedModal(false)}>
+            <View style={styles.speedList}>
+              <Text style={styles.speedTitle}>Playback Speed</Text>
+              {PLAYBACK_SPEEDS.map(speed => (
+                <TouchableOpacity key={speed} style={styles.speedItem} onPress={() => {
+                  setPlaybackSpeed(speed);
+                  player && (player.playbackRate = speed);
+                  setShowSpeedModal(false);
+                }}>
+                  <Text style={[styles.speedItemText, playbackSpeed === speed && styles.activeSpeedText]}>{speed}x</Text>
+                  {playbackSpeed === speed && <Ionicons name="checkmark" size={20} color={Colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+      </View>
+    </GestureDetector>
   );
 };
 
