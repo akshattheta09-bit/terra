@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // TERRA MEDIA PLAYER - PREMIUM VIDEO PLAYER SCREEN
-// Fixed: Touch, Layout, PiP, Queue, Lock Screen
+// Fixed: Touch, Layout, PiP, Queue, Lock Screen, Customizable Subtitles
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
@@ -87,6 +87,18 @@ interface Subtitle {
   text: string;
 }
 
+// Subtitle Settings Types
+type SubSize = 14 | 18 | 24;
+type SubColor = 'white' | 'yellow' | 'cyan';
+type SubBg = 'black' | 'transparent' | 'semi';
+
+interface SubtitleSettings {
+  size: SubSize;
+  color: SubColor;
+  bg: SubBg;
+  bottomOffset: number;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,6 +154,14 @@ export const VideoPlayerScreen: React.FC = () => {
   const [currentSubtitle, setCurrentSubtitle] = useState<string | null>(null);
   const [subtitleDelay, setSubtitleDelay] = useState(0);
 
+  // Subtitle Customization
+  const [subSettings, setSubSettings] = useState<SubtitleSettings>({
+    size: 18,
+    color: 'white',
+    bg: 'semi',
+    bottomOffset: 80,
+  });
+
   // Modals
   const [showSpeedModal, setShowSpeedModal] = useState(false);
   const [showResumeModal, setShowResumeModal] = useState(false);
@@ -172,6 +192,10 @@ export const VideoPlayerScreen: React.FC = () => {
 
   const volumeSv = useSharedValue(1);
   const brightnessSv = useSharedValue(1);
+
+  // Helper SharedValues for gestures start state
+  const startVolumeSv = useSharedValue(1);
+  const startBrightnessSv = useSharedValue(1);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Video Player Init (Hoisted for Gesture usage)
@@ -284,6 +308,47 @@ export const VideoPlayerScreen: React.FC = () => {
     return subs;
   };
 
+  // Subtitle Settings Cycles
+  const cycleSubSize = () => {
+    setSubSettings(prev => {
+      const next = prev.size === 14 ? 18 : prev.size === 18 ? 24 : 14;
+      return { ...prev, size: next };
+    });
+  };
+
+  const cycleSubColor = () => {
+    setSubSettings(prev => {
+      const next = prev.color === 'white' ? 'yellow' : prev.color === 'yellow' ? 'cyan' : 'white';
+      return { ...prev, color: next };
+    });
+  };
+
+  const cycleSubBg = () => {
+    setSubSettings(prev => {
+      const next = prev.bg === 'black' ? 'semi' : prev.bg === 'semi' ? 'transparent' : 'black';
+      return { ...prev, bg: next };
+    });
+  };
+
+  const getSubBgColor = () => {
+    switch (subSettings.bg) {
+      case 'black': return 'rgba(0,0,0,0.9)';
+      case 'semi': return 'rgba(0,0,0,0.5)';
+      case 'transparent': return 'transparent';
+      default: return 'rgba(0,0,0,0.5)';
+    }
+  };
+
+  const getSubColor = () => {
+    switch (subSettings.color) {
+      case 'white': return '#FFFFFF';
+      case 'yellow': return '#FFEB3B';
+      case 'cyan': return '#00BCD4';
+      default: return '#FFFFFF';
+    }
+  };
+
+
   const handleVideoEnded = useCallback(() => {
     if (loopMode === 'one') {
       player?.replay();
@@ -331,32 +396,75 @@ export const VideoPlayerScreen: React.FC = () => {
   const zoomGestures = Gesture.Simultaneous(pinchGesture, panZoomGesture);
 
   const controlsPanGesture = Gesture.Pan()
-    .onStart((e: any, context: any) => {
+    .onStart((e: any) => {
       if (controlsLocked) return;
+      // Capture start values in shared values instead of context
+      startBrightnessSv.value = brightnessSv.value;
+      startVolumeSv.value = volumeSv.value;
+
       const screenThird = windowWidth / 3;
       if (e.x < screenThird) {
-        context.type = 'brightness';
-        context.startVal = brightnessSv.value;
         runOnJS(setGestureType)('brightness');
       } else if (e.x > windowWidth - screenThird) {
-        context.type = 'volume';
-        context.startVal = volumeSv.value;
         runOnJS(setGestureType)('volume');
-      } else {
-        context.type = 'none';
       }
     })
-    .onUpdate((e: any, context: any) => {
-      if (controlsLocked || context.type === 'none') return;
+    .onUpdate((e: any) => {
+      if (controlsLocked) return;
+      const delta = -e.translationY / 200;
+      // We need to read gestureType from shared value or just infer from position? 
+      // Inferring from position constantly in onUpdate is tricky if finger moves out.
+      // Better to rely on where it started. 
+      // However, we can't easily pass 'type' via shared value without a derived value or check.
+      // Re-deriving type from startX is fine.
+
+      const screenThird = windowWidth / 3;
+      // Use the start X coordinate which is usually e.absoluteX - e.translationX? 
+      // OR better: handle logic based on gestureType state? No, runOnJS is async.
+      // We can use a minimal logic:
+
+      // Let's assume left third is brightness, right is volume based on START X
+      // But we don't have e.startX in onUpdate easily.
+      // We'll trust the runOnJS setGestureType for visual feedback, 
+      // but for logic we re-check e.x - e.translationX (approx start X).
+
+      // Actually simpler: we can just check e.x on Start and set a shared value for "activeGestureMode"
+      // 0: none, 1: brightness, 2: volume
+    })
+    // FIX: To properly handle this without context, use a shared value for mode
+    .onStart((e: any) => {
+      // ... logic handled above in separate onStart block? No, gesture chaining.
+    })
+    // Let's rewrite the chain properly using a shared value for mode
+    .onStart((e: any) => {
+      if (controlsLocked) return;
+      startBrightnessSv.value = brightnessSv.value;
+      startVolumeSv.value = volumeSv.value;
+
+      const screenThird = windowWidth / 3;
+      if (e.x < screenThird) {
+        runOnJS(setGestureType)('brightness');
+      } else if (e.x > windowWidth - screenThird) {
+        runOnJS(setGestureType)('volume');
+      }
+    })
+    .onUpdate((e: any) => {
+      if (controlsLocked) return;
+      const screenThird = windowWidth / 3;
+      // Approximation of start X to determine mode consistency
+      const startX = e.absoluteX - e.translationX;
+
       const delta = -e.translationY / 200;
 
-      if (context.type === 'brightness') {
-        const newVal = Math.max(0, Math.min(1, context.startVal + delta));
+      if (startX < screenThird) {
+        // Brightness
+        const newVal = Math.max(0, Math.min(1, startBrightnessSv.value + delta));
         brightnessSv.value = newVal;
         runOnJS(setGestureValue)(newVal);
         runOnJS(setBrightness)(newVal);
-      } else if (context.type === 'volume') {
-        const newVal = Math.max(0, Math.min(1, context.startVal + delta));
+      } else if (startX > windowWidth - screenThird) {
+        // Volume
+        const newVal = Math.max(0, Math.min(1, startVolumeSv.value + delta));
         volumeSv.value = newVal;
         runOnJS(setGestureValue)(newVal);
         runOnJS(setVolume)(newVal);
@@ -495,8 +603,15 @@ export const VideoPlayerScreen: React.FC = () => {
             allowsPictureInPicture
           />
           {currentSubtitle && !audioOnlyMode && (
-            <View style={styles.subtitleOverlay}>
-              <Text style={styles.subtitleText}>{currentSubtitle}</Text>
+            <View style={[styles.subtitleOverlay, { bottom: subSettings.bottomOffset }]}>
+              <Text style={[
+                styles.subtitleText,
+                {
+                  fontSize: subSettings.size,
+                  color: getSubColor(),
+                  backgroundColor: getSubBgColor()
+                }
+              ]}>{currentSubtitle}</Text>
             </View>
           )}
 
@@ -721,11 +836,13 @@ export const VideoPlayerScreen: React.FC = () => {
           </View>
         </Modal>
 
-        {/* Modal Subtitle */}
+        {/* Modal Subtitle Settings */}
         <Modal visible={showSubtitleModal} transparent animationType="fade" onRequestClose={() => setShowSubtitleModal(false)}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Subtitles & Audio</Text>
+
+              {/* Delay control */}
               <View style={styles.settingRow}>
                 <Text style={styles.settingLabel}>Subtitle Delay: {subtitleDelay / 1000}s</Text>
                 <View style={styles.rowControls}>
@@ -737,6 +854,33 @@ export const VideoPlayerScreen: React.FC = () => {
                   </TouchableOpacity>
                 </View>
               </View>
+
+              {/* Size control */}
+              <View style={styles.settingRow}>
+                <Text style={styles.settingLabel}>Size: {subSettings.size === 14 ? 'Small' : subSettings.size === 18 ? 'Medium' : 'Large'}</Text>
+                <TouchableOpacity onPress={cycleSubSize} style={styles.cycleBtn}>
+                  <Text style={styles.cycleBtnText}>Cycle</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Color control */}
+              <View style={styles.settingRow}>
+                <Text style={styles.settingLabel}>Color: {subSettings.color}</Text>
+                <View style={[styles.colorPreview, { backgroundColor: getSubColor() }]} />
+                <TouchableOpacity onPress={cycleSubColor} style={styles.cycleBtn}>
+                  <Text style={styles.cycleBtnText}>Cycle</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Background control */}
+              <View style={styles.settingRow}>
+                <Text style={styles.settingLabel}>Background: {subSettings.bg}</Text>
+                <View style={[styles.colorPreview, { backgroundColor: getSubBgColor(), borderColor: 'white', borderWidth: 1 }]} />
+                <TouchableOpacity onPress={cycleSubBg} style={styles.cycleBtn}>
+                  <Text style={styles.cycleBtnText}>Cycle</Text>
+                </TouchableOpacity>
+              </View>
+
               <TouchableOpacity style={styles.modalActionBtn} onPress={() => {
                 DocumentPicker.getDocumentAsync({
                   type: ['application/x-subrip', 'text/vtt', 'text/plain'],
@@ -926,6 +1070,10 @@ const styles = StyleSheet.create({
   adjustBtn: { padding: 10 },
   modalActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary, padding: 12, borderRadius: 8, width: '100%', marginBottom: 12 },
   modalActionBtnText: { color: 'white', fontWeight: 'bold', marginLeft: 8 },
+  cycleBtn: { backgroundColor: '#333', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6 },
+  cycleBtnText: { color: 'white', fontSize: 14 },
+  colorPreview: { width: 20, height: 20, borderRadius: 10, marginRight: 10 },
+
   closeBtn: { padding: 10, alignSelf: 'center' },
   closeBtnText: { color: '#888', fontSize: 16 },
 });
