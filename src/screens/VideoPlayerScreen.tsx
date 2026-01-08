@@ -49,6 +49,7 @@ import {
   nextVideo,
   previousVideo,
 } from '../services/VideoPlaybackService';
+import ProScrubber from '../components/Player/ProScrubber';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -209,7 +210,12 @@ export const VideoPlayerScreen: React.FC = () => {
       const currentPos = player.currentTime * 1000;
       const totalDur = player.duration * 1000;
 
-      setPosition(currentPos);
+      // Optimization: Avoid unnecessary re-renders
+      setPosition(prev => {
+        if (Math.abs(prev - currentPos) < 1000 && isPlaying) return prev;
+        return currentPos;
+      });
+
       setDuration(totalDur > 0 ? totalDur : 0);
       setIsPlaying(player.playing);
       setIsLoading(false);
@@ -223,7 +229,7 @@ export const VideoPlayerScreen: React.FC = () => {
         setCurrentSubtitle(activeSub ? activeSub.text : null);
       }
 
-    }, 200);
+    }, 1000);
 
     const subEnd = player.addListener('playToEnd', () => {
       handleVideoEnded();
@@ -580,16 +586,22 @@ export const VideoPlayerScreen: React.FC = () => {
               {/* Seek Bar */}
               <View style={styles.progressRow}>
                 <Text style={styles.timeText}>{formatDuration(position)}</Text>
-                <View style={styles.sliderContainer}>
-                  {/* Custom visual slider - simple click to seek for now to avoid conflict with Pan */}
-                  <TouchableOpacity style={styles.sliderTrack} activeOpacity={1} onPress={(e) => {
-                    const { locationX } = e.nativeEvent;
-                    // We need width of this element. For now, let's trust the seek gesture mostly.
-                    // Or implement precise seeking if needed.
-                  }}>
-                    <View style={[styles.sliderFill, { width: `${(position / duration) * 100}%` }]} />
-                    <View style={[styles.sliderThumb, { left: `${(position / duration) * 100}%` }]} />
-                  </TouchableOpacity>
+                <View style={[styles.sliderContainer, { marginHorizontal: 0 }]}>
+                  <ProScrubber
+                    duration={duration > 0 ? duration : 1}
+                    currentTime={position}
+                    onSeekStart={() => {
+                      // Optional: Reset controls timeout so they don't fade while seeking
+                      if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+                      // Don't pause here if you want audio to continue, or pause if you want "scrubbing" behavior
+                    }}
+                    onSeekEnd={(time) => {
+                      if (player) {
+                        player.currentTime = time / 1000;
+                      }
+                      resetControlsTimeout();
+                    }}
+                  />
                 </View>
                 <Text style={styles.timeText}>{formatDuration(duration)}</Text>
               </View>

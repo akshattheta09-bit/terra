@@ -69,6 +69,9 @@ export const VideoLibraryScreen: React.FC = () => {
   }, [dispatch]);
   
   // Generate thumbnails for videos when they change
+  // Generate thumbnails for videos when they change
+  /* 
+  // Batch processing disabled for performance - lazy loading in VideoItem is sufficient
   useEffect(() => {
     if (allVideos.length > 0 && !thumbnailGenerationRef.current) {
       thumbnailGenerationRef.current = true;
@@ -86,6 +89,7 @@ export const VideoLibraryScreen: React.FC = () => {
       });
     }
   }, [allVideos]);
+  */
   
   // Filter videos based on current filter
   const getFilteredVideos = useCallback((): VideoFile[] => {
