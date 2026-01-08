@@ -8,6 +8,7 @@ import { Audio } from 'expo-av';
 import { Platform, AppState, AppStateStatus } from 'react-native';
 import { VideoFile } from '../types/media';
 import { LoopMode, PlaybackSpeed } from '../types/playback';
+import { VideoPlayer } from 'expo-video';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types & Interfaces
@@ -66,6 +67,9 @@ const queueState: VideoQueueState = {
 let statusCallback: PlaybackStatusCallback | null = null;
 let videoChangeCallback: VideoChangeCallback | null = null;
 let remoteControlCallback: RemoteControlCallback | null = null;
+
+// Player Reference
+let videoPlayer: VideoPlayer | null = null;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Audio Mode Configuration
@@ -127,6 +131,47 @@ export const isAppInForeground = (): boolean => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Player Registration & Control
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Register the Expo Video Player instance
+ */
+export const registerPlayer = (player: VideoPlayer) => {
+  videoPlayer = player;
+  
+  // Configure Player for Background & Lock Screen
+  videoPlayer.staysActiveInBackground = true;
+  videoPlayer.showNowPlayingNotification = true;
+  
+  console.log('[VideoPlaybackService] Player registered and configured');
+};
+
+/**
+ * Play a specific video file with Metadata
+ */
+const playMedia = (video: VideoFile) => {
+  if (!videoPlayer) return;
+
+  const metadata = {
+    title: video.title || video.fileName,
+    artist: 'Terra Player',
+    artwork: video.thumbnail, 
+  };
+
+  videoPlayer.replace({
+    uri: video.filePath,
+    metadata,
+  });
+  
+  // Ensure playing
+  videoPlayer.play();
+  
+  console.log(`[VideoPlaybackService] Playing: ${metadata.title}`);
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Queue Management
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -147,6 +192,11 @@ export const setVideoQueue = (
   // Notify about current video
   const currentVideo = getCurrentVideo();
   videoChangeCallback?.(currentVideo, queueState.currentIndex);
+  
+  // If player is registered, start playing ONLY if we have a valid index
+  if (currentVideo && videoPlayer) {
+    playMedia(currentVideo);
+  }
 };
 
 /**
@@ -223,6 +273,8 @@ export const nextVideo = (): VideoFile | null => {
   console.log(`[VideoPlaybackService] Next video: ${video?.fileName} (index: ${newIndex})`);
   videoChangeCallback?.(video, newIndex);
   
+  if (video) playMedia(video);
+
   return video;
 };
 
@@ -255,6 +307,8 @@ export const previousVideo = (): VideoFile | null => {
   console.log(`[VideoPlaybackService] Previous video: ${video?.fileName} (index: ${newIndex})`);
   videoChangeCallback?.(video, newIndex);
   
+  if (video) playMedia(video);
+
   return video;
 };
 
@@ -270,6 +324,8 @@ export const jumpToIndex = (index: number): VideoFile | null => {
   console.log(`[VideoPlaybackService] Jumped to index ${index}: ${video?.fileName}`);
   videoChangeCallback?.(video, index);
   
+  if (video) playMedia(video);
+
   return video;
 };
 
@@ -520,6 +576,7 @@ export default {
   initializeVideoService,
   cleanupVideoService,
   configureVideoAudioMode,
+  registerPlayer,
   setVideoQueue,
   getCurrentVideo,
   getQueueState,

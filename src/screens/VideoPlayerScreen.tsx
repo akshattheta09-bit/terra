@@ -39,15 +39,19 @@ import { Colors } from '../utils/colors';
 import { formatDuration } from '../utils/formatters';
 import { VideoFile } from '../types/media';
 import { LoopMode, PlaybackSpeed, PLAYBACK_SPEEDS } from '../types/playback';
+
 import {
+  registerPlayer,
+  jumpToIndex,
+  nextVideo as serviceNextVideo,
+  previousVideo as servicePreviousVideo,
   setVideoQueue as setServiceVideoQueue,
   initializeVideoService,
   cleanupVideoService,
   setLoopMode as setServiceLoopMode,
   getQueueState,
   toggleShuffle as toggleServiceShuffle,
-  nextVideo,
-  previousVideo,
+  getVideoAtIndex,
 } from '../services/VideoPlaybackService';
 import ProScrubber from '../components/Player/ProScrubber';
 
@@ -202,16 +206,18 @@ export const VideoPlayerScreen: React.FC = () => {
   // Video Player Init (Hoisted for Gesture usage)
   // ─────────────────────────────────────────────────────────────────────────
 
-  // NOTE: Player initialization must be before gestures to avoid "used before declaration"
-  const videoSource = currentVideo?.filePath || null;
-  const player = useVideoPlayer(videoSource, (player) => {
-    if (videoSource) {
-      player.loop = loopMode === 'one';
-      player.staysActiveInBackground = true;
-      player.volume = isMuted ? 0 : volume;
-      player.timeUpdateEventInterval = 0.5;
-      player.play();
-    }
+  // ─────────────────────────────────────────────────────────────────────────
+  // Video Player Init (Hoisted for Gesture usage)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Initialize with NULL source. The Service will take over and call .replace()
+  // with correct source + metadata.
+  const player = useVideoPlayer(null, (player) => {
+    player.loop = loopMode === 'one';
+    player.volume = isMuted ? 0 : volume;
+    player.timeUpdateEventInterval = 0.5;
+    // Note: We don't auto-play here because source is null initially.
+    // Service will trigger play.
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -269,14 +275,14 @@ export const VideoPlayerScreen: React.FC = () => {
   };
 
   const handleNextVideo = () => {
-    const v = nextVideo();
-    if (v) setCurrentIndex(videoQueue.findIndex(i => i.id === v.id));
+    // Service handles actual player change
+    serviceNextVideo();
     resetControlsTimeout();
   };
 
   const handlePreviousVideo = () => {
-    const v = previousVideo();
-    if (v) setCurrentIndex(videoQueue.findIndex(i => i.id === v.id));
+    // Service handles actual player change
+    servicePreviousVideo();
     resetControlsTimeout();
   };
 
@@ -511,12 +517,17 @@ export const VideoPlayerScreen: React.FC = () => {
       : queue.findIndex(v => v.id === videoId);
     const verifiedIndex = initialIndex >= 0 ? initialIndex : 0;
 
-    setVideoQueueState(queue);
-    setCurrentIndex(verifiedIndex);
+    // 1. Initialize Service & Register Player
+    initializeVideoService()
+      .then(() => {
+        registerPlayer(player);
 
-    setServiceVideoQueue(queue, verifiedIndex);
-    initializeVideoService().catch(console.error);
+        // 2. Set Queue & START Playback via Service (which sets metadata)
+        setServiceVideoQueue(queue, verifiedIndex);
+      })
+      .catch(console.error);
 
+    // Update local config
     if (videoPlaybackState.loopMode) {
       setLoopMode(videoPlaybackState.loopMode);
       setServiceLoopMode(videoPlaybackState.loopMode);
@@ -525,7 +536,7 @@ export const VideoPlayerScreen: React.FC = () => {
     return () => {
       cleanupVideoService();
     };
-  }, [videoId, playlistVideos, startIndex, allVideos]);
+  }, [videoId, playlistVideos, startIndex, allVideos, player]);
 
   useEffect(() => {
     if (videoQueue.length > 0 && currentIndex >= 0 && currentIndex < videoQueue.length) {
