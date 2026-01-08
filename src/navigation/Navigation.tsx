@@ -73,7 +73,7 @@ const TabIcon: React.FC<TabIconProps> = ({ focused, icon, label }) => (
 const MainTabNavigator: React.FC = () => {
   const { currentTrack } = useAppSelector(state => state.playback);
   const hasMiniPlayer = !!currentTrack;
-  
+
   return (
     <View style={styles.container}>
       <Tab.Navigator
@@ -134,7 +134,7 @@ const MainTabNavigator: React.FC = () => {
           }}
         />
       </Tab.Navigator>
-      
+
       {/* Mini Player */}
       {hasMiniPlayer && <MiniPlayer />}
     </View>
@@ -143,8 +143,11 @@ const MainTabNavigator: React.FC = () => {
 
 // Root Stack Navigator
 export const Navigation: React.FC = () => {
+  const { isDarkMode } = useAppSelector(state => state.ui);
+  const theme = isDarkMode ? DarkTheme : DefaultTheme;
+
   return (
-    <NavigationContainer theme={DarkTheme}>
+    <NavigationContainer theme={theme}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,

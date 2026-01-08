@@ -98,12 +98,12 @@ const SettingsSwitchRow: React.FC<SettingsSwitchRowProps> = ({
 export const SettingsScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const { settings } = useAppSelector(state => state.settings);
-  const { isScanning, scanProgress } = useAppSelector(state => state.ui);
+  const { isScanning, scanProgress, sleepTimerEndTime } = useAppSelector(state => state.ui);
   const { allSongs } = useAppSelector(state => state.audio);
   const { allVideos } = useAppSelector(state => state.video);
-  
+
   const { performFullScan } = useMediaScanning();
-  
+
   // Reset settings
   const handleResetSettings = useCallback(() => {
     Alert.alert(
@@ -119,7 +119,7 @@ export const SettingsScreen: React.FC = () => {
       ]
     );
   }, [dispatch]);
-  
+
   // Clear library
   const handleClearLibrary = useCallback(() => {
     Alert.alert(
@@ -138,7 +138,7 @@ export const SettingsScreen: React.FC = () => {
       ]
     );
   }, []);
-  
+
   // Rescan library
   const handleRescanLibrary = useCallback(async () => {
     Alert.alert(
@@ -157,7 +157,7 @@ export const SettingsScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Header title="Settings" />
-      
+
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
@@ -186,7 +186,7 @@ export const SettingsScreen: React.FC = () => {
             showArrow
           />
         </SettingsSection>
-        
+
         {/* Library Settings */}
         <SettingsSection title="Library Settings">
           <SettingsSwitchRow
@@ -216,7 +216,7 @@ export const SettingsScreen: React.FC = () => {
             }
           />
         </SettingsSection>
-        
+
         {/* Audio Playback Settings */}
         <SettingsSection title="Audio Playback">
           <SettingsSwitchRow
@@ -246,7 +246,7 @@ export const SettingsScreen: React.FC = () => {
             }
           />
         </SettingsSection>
-        
+
         {/* Video Settings */}
         <SettingsSection title="Video Playback">
           <SettingsSwitchRow
@@ -274,7 +274,7 @@ export const SettingsScreen: React.FC = () => {
             onValueChange={(value) => dispatch(updateVideoSettings({ doubleTapToSeek: value }))}
           />
         </SettingsSection>
-        
+
         {/* Appearance */}
         <SettingsSection title="Appearance">
           <SettingsSwitchRow
@@ -293,13 +293,25 @@ export const SettingsScreen: React.FC = () => {
             title="Theme"
             value={
               <Text style={styles.valueText}>
-                {settings.appearance.colorScheme === 'premium_dark' ? 'Premium Dark' : 
-                 settings.appearance.colorScheme.charAt(0).toUpperCase() + settings.appearance.colorScheme.slice(1)}
+                {settings.appearance.colorScheme === 'premium_dark' ? 'Premium Dark' :
+                  settings.appearance.colorScheme.charAt(0).toUpperCase() + settings.appearance.colorScheme.slice(1)}
               </Text>
             }
           />
         </SettingsSection>
-        
+
+        {/* Equalizer (Visual Only for now) */}
+        <SettingsSection title="Equalizer">
+          <SettingsRow
+            title="Preset"
+            value={
+              <Text style={styles.valueText}>Flat</Text>
+            }
+            showArrow
+            onPress={() => Alert.alert('Equalizer', 'Presets: Flat, Bass Boost, Rock, Pop, Jazz, Classical. (Audio processing coming soon)')}
+          />
+        </SettingsSection>
+
         {/* About */}
         <SettingsSection title="About">
           <SettingsRow
@@ -311,20 +323,34 @@ export const SettingsScreen: React.FC = () => {
             subtitle="Premium Offline Media Experience"
           />
           <SettingsRow
+            title="Sleep Timer"
+            subtitle={sleepTimerEndTime ? `Ends at ${new Date(sleepTimerEndTime).toLocaleTimeString()}` : "Off"}
+            onPress={() => {
+              Alert.alert("Sleep Timer", "Set a timer to stop playback", [
+                { text: "Off", onPress: () => dispatch({ type: 'ui/clearSleepTimer' }) },
+                { text: "15 min", onPress: () => dispatch({ type: 'ui/setSleepTimer', payload: 15 }) },
+                { text: "30 min", onPress: () => dispatch({ type: 'ui/setSleepTimer', payload: 30 }) },
+                { text: "60 min", onPress: () => dispatch({ type: 'ui/setSleepTimer', payload: 60 }) },
+                { text: "Cancel", style: "cancel" }
+              ]);
+            }}
+            showArrow
+          />
+          <SettingsRow
             title="Reset Settings"
             subtitle="Restore all settings to default"
             onPress={handleResetSettings}
             showArrow
           />
         </SettingsSection>
-        
+
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Made with ❤️ for offline media</Text>
           <Text style={styles.footerSubtext}>© 2024 Terra Media Player</Text>
         </View>
       </ScrollView>
-      
+
       {/* Scan Progress Modal */}
       <ScanProgressModal visible={isScanning} progress={scanProgress} />
     </SafeAreaView>

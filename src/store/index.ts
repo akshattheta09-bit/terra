@@ -103,6 +103,28 @@ export {
   saveVideoPosition,
   saveVideoPosition as updateVideoProgress,
   addVideoToHistory,
+  // Queue management
+  setVideoQueue,
+  addToVideoQueue,
+  removeFromVideoQueue,
+  clearVideoQueue,
+  nextVideoInQueue,
+  previousVideoInQueue,
+  jumpToVideoIndex,
+  toggleVideoShuffle,
+  // Background play
+  setBackgroundPlayEnabled,
+  setLastBackgroundTime,
+  setBufferedPosition as setVideoBufferedPosition,
+  // Selectors
+  selectCurrentVideoInQueue,
+  selectVideoQueue,
+  selectVideoQueueIndex,
+  selectHasNextVideo,
+  selectHasPreviousVideo,
+  selectIsVideoShuffled,
+  selectVideoLoopMode,
+  selectIsBackgroundPlayEnabled,
 } from './videoPlaybackSlice';
 
 // UI slice exports

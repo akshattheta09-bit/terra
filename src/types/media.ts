@@ -26,6 +26,7 @@ export interface VideoFile {
   id: number;
   filePath: string;
   fileName: string;
+  title?: string;
   folderPath: string;
   duration: number;
   width: number | null;

@@ -1,6 +1,6 @@
 // Video Library Screen for Terra Media Player
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,21 +19,25 @@ import {
   setVideoFilter,
   setVideoSortBy,
   loadAllVideoFiles,
+  setVideoQueue,
 } from '../store';
 import { Header, SearchBar, VideoItem, ScanProgressModal } from '../components';
 import { VideoFile } from '../types/media';
 import { Colors } from '../utils/colors';
 import { DIMENSIONS } from '../utils/constants';
+import { VideoFilter, VideoSortBy } from '../store/videoSlice';
+import { 
+  generateThumbnailsBatch,
+  setVideoQueue as setVideoServiceQueue,
+} from '../services';
 
 type ViewMode = 'grid' | 'list';
-type FilterType = 'all' | 'folders' | 'recently_played' | 'most_played';
-type SortType = 'title' | 'date' | 'duration' | 'size';
 
-const FILTERS: { key: FilterType; label: string }[] = [
+const FILTERS: { key: VideoFilter; label: string }[] = [
   { key: 'all', label: 'All Videos' },
   { key: 'folders', label: 'Folders' },
-  { key: 'recently_played', label: 'Recent' },
-  { key: 'most_played', label: 'Top' },
+  { key: 'recently_watched', label: 'Recent' },
+  { key: 'favorites', label: 'Favorites' },
 ];
 
 export const VideoLibraryScreen: React.FC = () => {
@@ -44,6 +48,7 @@ export const VideoLibraryScreen: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const thumbnailGenerationRef = useRef<boolean>(false);
   
   const { allVideos, folders, filter, sortBy } = useAppSelector(
     state => state.video
@@ -63,6 +68,25 @@ export const VideoLibraryScreen: React.FC = () => {
     dispatch(loadAllVideoFiles());
   }, [dispatch]);
   
+  // Generate thumbnails for videos when they change
+  useEffect(() => {
+    if (allVideos.length > 0 && !thumbnailGenerationRef.current) {
+      thumbnailGenerationRef.current = true;
+      // Generate thumbnails in the background (don't block UI)
+      generateThumbnailsBatch(
+        allVideos,
+        (processed, total) => {
+          // Progress callback - could show progress indicator if needed
+          console.log(`Thumbnail generation: ${Math.round((processed / total) * 100)}%`);
+        }
+      ).then(() => {
+        console.log('Thumbnail generation complete');
+      }).catch(err => {
+        console.warn('Thumbnail generation error:', err);
+      });
+    }
+  }, [allVideos]);
+  
   // Filter videos based on current filter
   const getFilteredVideos = useCallback((): VideoFile[] => {
     let filtered = [...allVideos];
@@ -79,25 +103,22 @@ export const VideoLibraryScreen: React.FC = () => {
     
     // Apply category filter
     switch (filter) {
-      case 'recently_played':
+      case 'recently_watched':
         return filtered
           .filter(v => v.lastPlayed)
           .sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))
           .slice(0, 50);
-      case 'most_played':
-        return filtered
-          .filter(v => v.playCount > 0)
-          .sort((a, b) => b.playCount - a.playCount)
-          .slice(0, 50);
+      case 'favorites':
+        return filtered.filter(v => v.isFavorite);
       default:
         // Sort by selected option
         return filtered.sort((a, b) => {
           switch (sortBy) {
-            case 'date':
+            case 'date_added':
               return b.dateAdded - a.dateAdded;
             case 'duration':
               return b.duration - a.duration;
-            case 'size':
+            case 'file_size':
               return b.fileSize - a.fileSize;
             default:
               return (a.title || a.fileName).localeCompare(b.title || b.fileName);
@@ -108,13 +129,27 @@ export const VideoLibraryScreen: React.FC = () => {
   
   const filteredVideos = getFilteredVideos();
   
-  // Handle video press
+  // Handle video press - set up queue and navigate
   const handleVideoPress = useCallback((video: VideoFile) => {
+    // Set the current filtered list as the video queue
+    const currentList = getFilteredVideos();
+    const videoIndex = currentList.findIndex(v => v.id === video.id);
+    
+    // Set the queue in Redux
+    dispatch(setVideoQueue({ videos: currentList, startIndex: videoIndex >= 0 ? videoIndex : 0 }));
+    
+    // Also set up the playback service queue
+    setVideoServiceQueue(
+      currentList,
+      videoIndex >= 0 ? videoIndex : 0
+    );
+    
+    // Navigate to player
     navigation.navigate('VideoPlayer', { videoId: video.id });
-  }, [navigation]);
+  }, [navigation, getFilteredVideos, dispatch]);
   
   // Handle filter change
-  const handleFilterChange = useCallback((newFilter: FilterType) => {
+  const handleFilterChange = useCallback((newFilter: VideoFilter) => {
     dispatch(setVideoFilter(newFilter));
   }, [dispatch]);
   

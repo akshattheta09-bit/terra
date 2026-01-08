@@ -140,7 +140,7 @@ export const NowPlayingScreen: React.FC = () => {
   
   // Speed options
   const [showSpeedOptions, setShowSpeedOptions] = useState(false);
-  const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+  const SPEED_OPTIONS: Array<0.5 | 0.75 | 1 | 1.25 | 1.5 | 2> = [0.5, 0.75, 1, 1.25, 1.5, 2];
   
   if (!currentTrack) {
     return (
@@ -312,11 +312,11 @@ export const NowPlayingScreen: React.FC = () => {
         </TouchableOpacity>
         
         <TouchableOpacity
-          style={[styles.secondaryButton, loopMode !== 'off' && styles.activeButton]}
+          style={[styles.secondaryButton, loopMode !== 'none' && styles.activeButton]}
           onPress={cycleLoopMode}
           activeOpacity={0.7}
         >
-          <Text style={[styles.secondaryIcon, loopMode !== 'off' && styles.activeIcon]}>
+          <Text style={[styles.secondaryIcon, loopMode !== 'none' && styles.activeIcon]}>
             {getLoopModeIcon(loopMode)}
           </Text>
         </TouchableOpacity>

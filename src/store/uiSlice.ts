@@ -33,6 +33,10 @@ interface UIState {
   // Search
   isSearchActive: boolean;
   searchType: 'audio' | 'video' | null;
+
+  // Sleep Timer
+  sleepTimerDuration: number | null; // Minutes
+  sleepTimerEndTime: number | null; // Timestamp
 }
 
 const initialState: UIState = {
@@ -52,6 +56,8 @@ const initialState: UIState = {
   isRefreshing: false,
   isSearchActive: false,
   searchType: null,
+  sleepTimerDuration: null,
+  sleepTimerEndTime: null,
 };
 
 const uiSlice = createSlice({
@@ -138,6 +144,17 @@ const uiSlice = createSlice({
     closeAddToPlaylistModal: (state) => {
       state.selectedAudioForPlaylist = null;
       state.showAddToPlaylistModal = false;
+    },
+
+    setSleepTimer: (state, action: PayloadAction<number>) => {
+      // Action payload is duration in minutes
+      state.sleepTimerDuration = action.payload;
+      state.sleepTimerEndTime = Date.now() + action.payload * 60 * 1000;
+    },
+
+    clearSleepTimer: (state) => {
+      state.sleepTimerDuration = null;
+      state.sleepTimerEndTime = null;
     },
   },
 });

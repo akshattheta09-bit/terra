@@ -7,7 +7,6 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  SectionList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -179,56 +178,64 @@ export const FavoritesScreen: React.FC = () => {
       return renderEmpty();
     }
     
-    const sections = [];
+    // Combine items with a type discriminator
+    type MixedItem = 
+      | { type: 'song'; data: AudioFile }
+      | { type: 'video'; data: VideoFile }
+      | { type: 'header'; title: string; count: number };
+    
+    const mixedItems: MixedItem[] = [];
     
     if (filteredSongs.length > 0) {
-      sections.push({
-        title: 'Songs',
-        data: filteredSongs,
-        type: 'song' as const,
-      });
+      mixedItems.push({ type: 'header', title: 'Songs', count: filteredSongs.length });
+      filteredSongs.forEach(song => mixedItems.push({ type: 'song', data: song }));
     }
     
     if (filteredVideos.length > 0) {
-      sections.push({
-        title: 'Videos',
-        data: filteredVideos,
-        type: 'video' as const,
-      });
+      mixedItems.push({ type: 'header', title: 'Videos', count: filteredVideos.length });
+      filteredVideos.forEach(video => mixedItems.push({ type: 'video', data: video }));
     }
     
     return (
-      <SectionList
-        sections={sections}
-        keyExtractor={(item, index) => `${item.id}-${index}`}
-        renderItem={({ item, section }) => {
-          if (section.type === 'song') {
+      <FlatList
+        data={mixedItems}
+        keyExtractor={(item, index) => {
+          if (item.type === 'header') return `header-${item.title}`;
+          if (item.type === 'song') return `song-${item.data.id}`;
+          return `video-${item.data.id}`;
+        }}
+        renderItem={({ item }) => {
+          if (item.type === 'header') {
+            return (
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>{item.title}</Text>
+                <Text style={styles.sectionCount}>{item.count}</Text>
+              </View>
+            );
+          }
+          if (item.type === 'song') {
             return (
               <SongItem
-                song={item as AudioFile}
+                song={item.data}
                 onPress={handleSongPress}
                 onFavoritePress={handleSongFavoritePress}
-                isPlaying={(item as AudioFile).id === currentTrackId}
+                isPlaying={item.data.id === currentTrackId}
               />
             );
           }
           return (
             <VideoItem
-              video={item as VideoFile}
+              video={item.data}
               onPress={handleVideoPress}
               viewMode="list"
               style={styles.videoItem}
             />
           );
         }}
-        renderSectionHeader={({ section: { title, data } }) => (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{title}</Text>
-            <Text style={styles.sectionCount}>{data.length}</Text>
-          </View>
-        )}
         showsVerticalScrollIndicator={false}
-        stickySectionHeadersEnabled
+        stickyHeaderIndices={mixedItems
+          .map((item, index) => item.type === 'header' ? index : -1)
+          .filter(i => i !== -1)}
       />
     );
   };

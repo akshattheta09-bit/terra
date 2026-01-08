@@ -63,6 +63,9 @@ export const scanMediaLibrary = async (
         if (!includeHidden && isHiddenFile(asset.filename)) continue;
         if (isFolderExcluded(folderPath, excludedFolders)) continue;
         
+        // Get file info for size
+        const fileInfo = await FileSystem.getInfoAsync(asset.uri);
+        
         const audioFile: AudioFile = {
           id: 0, // Will be set by database
           filePath: asset.uri,
@@ -75,7 +78,7 @@ export const scanMediaLibrary = async (
           genre: '',
           year: null,
           trackNumber: null,
-          fileSize: 0,
+          fileSize: fileInfo.exists ? fileInfo.size : 0,
           dateAdded: asset.creationTime || now,
           lastPlayed: null,
           playCount: 0,
@@ -127,6 +130,8 @@ export const scanMediaLibrary = async (
         if (!includeHidden && isHiddenFile(asset.filename)) continue;
         if (isFolderExcluded(folderPath, excludedFolders)) continue;
         
+        const fileInfo = await FileSystem.getInfoAsync(asset.uri);
+
         const videoFile: VideoFile = {
           id: 0,
           filePath: asset.uri,
@@ -135,7 +140,7 @@ export const scanMediaLibrary = async (
           duration: Math.round((asset.duration || 0) * 1000),
           width: asset.width || null,
           height: asset.height || null,
-          fileSize: 0,
+          fileSize: fileInfo.exists ? fileInfo.size : 0,
           dateAdded: asset.creationTime || now,
           lastPlayed: null,
           playCount: 0,

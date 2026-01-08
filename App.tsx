@@ -1,5 +1,6 @@
 // Terra Media Player - Main App Entry Point
 
+import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
 import { StatusBar, View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -7,8 +8,10 @@ import { Provider } from 'react-redux';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { store } from './src/store';
 import { Navigation } from './src/navigation';
-import { DatabaseService } from './src/services/DatabaseService';
-import { AudioPlaybackService } from './src/services/AudioPlaybackService';
+import { initDatabase } from './src/services/DatabaseService';
+import { configureAudioMode, unloadAudio } from './src/services/AudioPlaybackService';
+import { useAppSelector, useAppDispatch } from './src/hooks/useRedux';
+import { useAudioPlayback } from './src/hooks/useAudioPlayback';
 import { Colors } from './src/utils/colors';
 import { DIMENSIONS } from './src/utils/constants';
 
@@ -19,16 +22,16 @@ type InitState = 'loading' | 'ready' | 'error';
 const AppContent: React.FC = () => {
   const [initState, setInitState] = useState<InitState>('loading');
   const [error, setError] = useState<string | null>(null);
-  
+
   useEffect(() => {
     const initializeApp = async () => {
       try {
         // Initialize database
-        await DatabaseService.getInstance().initialize();
-        
+        await initDatabase();
+
         // Configure audio mode for background playback
-        await AudioPlaybackService.getInstance().configureAudioMode();
-        
+        await configureAudioMode();
+
         setInitState('ready');
       } catch (err) {
         console.error('App initialization error:', err);
@@ -36,15 +39,39 @@ const AppContent: React.FC = () => {
         setInitState('error');
       }
     };
-    
+
     initializeApp();
-    
-    // Cleanup on unmount
+
     return () => {
-      AudioPlaybackService.getInstance().cleanup();
+      unloadAudio();
     };
   }, []);
-  
+
+  // Sleep Timer Logic
+  const { sleepTimerEndTime } = useAppSelector(state => state.ui);
+  const dispatch = useAppDispatch();
+  const { pause } = useAudioPlayback();
+
+  useEffect(() => {
+    if (!sleepTimerEndTime) return;
+
+    const interval = setInterval(() => {
+      if (Date.now() >= sleepTimerEndTime) {
+        // Time's up!
+        console.log('[SleepTimer] Timer finished, pausing playback');
+        pause(); // Pause audio
+        // For video, we might need a global event or service call, but audio service handles background.
+        // If video is playing, it should also pause if linked, or we can use VideoPlaybackService.
+
+        dispatch({ type: 'ui/clearSleepTimer' });
+
+        // Optional: Show toast or alert
+      }
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [sleepTimerEndTime, pause, dispatch]);
+
   // Loading state
   if (initState === 'loading') {
     return (
@@ -60,7 +87,7 @@ const AppContent: React.FC = () => {
       </View>
     );
   }
-  
+
   // Error state
   if (initState === 'error') {
     return (
@@ -71,7 +98,7 @@ const AppContent: React.FC = () => {
       </View>
     );
   }
-  
+
   // Ready - render main app
   return <Navigation />;
 };
