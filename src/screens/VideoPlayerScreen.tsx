@@ -149,6 +149,9 @@ export const VideoPlayerScreen: React.FC = () => {
   const [showSubtitleModal, setShowSubtitleModal] = useState(false);
   const [resumePosition, setResumePosition] = useState(0);
 
+  // Audio-Only Mode (Battery Saver)
+  const [audioOnlyMode, setAudioOnlyMode] = useState(false);
+
   // Refs
   const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
   // Using RN Animated for controls fade (as requested/legacy, kept for stability)
@@ -169,6 +172,22 @@ export const VideoPlayerScreen: React.FC = () => {
 
   const volumeSv = useSharedValue(1);
   const brightnessSv = useSharedValue(1);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Video Player Init (Hoisted for Gesture usage)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // NOTE: Player initialization must be before gestures to avoid "used before declaration"
+  const videoSource = currentVideo?.filePath || null;
+  const player = useVideoPlayer(videoSource, (player) => {
+    if (videoSource) {
+      player.loop = loopMode === 'one';
+      player.staysActiveInBackground = true;
+      player.volume = isMuted ? 0 : volume;
+      player.timeUpdateEventInterval = 0.5;
+      player.play();
+    }
+  });
 
   // ─────────────────────────────────────────────────────────────────────────
   // Control Helpers
@@ -278,12 +297,12 @@ export const VideoPlayerScreen: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   const pinchGesture = Gesture.Pinch()
-    .onStart((e) => {
+    .onStart((e: any) => {
       savedScale.value = scale.value;
       focalX.value = e.focalX;
       focalY.value = e.focalY;
     })
-    .onUpdate((e) => {
+    .onUpdate((e: any) => {
       scale.value = savedScale.value * e.scale;
     })
     .onEnd(() => {
@@ -302,7 +321,7 @@ export const VideoPlayerScreen: React.FC = () => {
       savedTranslateX.value = translateX.value;
       savedTranslateY.value = translateY.value;
     })
-    .onUpdate((e) => {
+    .onUpdate((e: any) => {
       if (scale.value > 1) {
         translateX.value = savedTranslateX.value + e.translationX;
         translateY.value = savedTranslateY.value + e.translationY;
@@ -312,7 +331,7 @@ export const VideoPlayerScreen: React.FC = () => {
   const zoomGestures = Gesture.Simultaneous(pinchGesture, panZoomGesture);
 
   const controlsPanGesture = Gesture.Pan()
-    .onStart((e, context: any) => {
+    .onStart((e: any, context: any) => {
       if (controlsLocked) return;
       const screenThird = windowWidth / 3;
       if (e.x < screenThird) {
@@ -327,7 +346,7 @@ export const VideoPlayerScreen: React.FC = () => {
         context.type = 'none';
       }
     })
-    .onUpdate((e, context: any) => {
+    .onUpdate((e: any, context: any) => {
       if (controlsLocked || context.type === 'none') return;
       const delta = -e.translationY / 200;
 
@@ -350,7 +369,7 @@ export const VideoPlayerScreen: React.FC = () => {
 
   const doubleTapGesture = Gesture.Tap()
     .numberOfTaps(2)
-    .onEnd((e) => {
+    .onEnd((e: any) => {
       if (controlsLocked) return;
       const screenThird = windowWidth / 3;
       if (e.x < screenThird) {
@@ -414,17 +433,6 @@ export const VideoPlayerScreen: React.FC = () => {
     }
   }, [currentIndex, videoQueue, dispatch]);
 
-  const videoSource = currentVideo?.filePath || null;
-  const player = useVideoPlayer(videoSource, (player) => {
-    if (videoSource) {
-      player.loop = loopMode === 'one';
-      player.staysActiveInBackground = true;
-      player.volume = isMuted ? 0 : volume;
-      player.timeUpdateEventInterval = 0.5;
-      player.play();
-    }
-  });
-
   useEffect(() => {
     if (!player) return;
     const interval = setInterval(() => {
@@ -480,15 +488,34 @@ export const VideoPlayerScreen: React.FC = () => {
 
         <Reanimated.View style={[styles.videoContainer, videoAnimatedStyle]}>
           <VideoView
-            style={StyleSheet.absoluteFill}
+            style={[StyleSheet.absoluteFill, { opacity: audioOnlyMode ? 0 : 1 }]}
             player={player}
             contentFit={aspectRatio}
             nativeControls={false}
             allowsPictureInPicture
           />
-          {currentSubtitle && (
+          {currentSubtitle && !audioOnlyMode && (
             <View style={styles.subtitleOverlay}>
               <Text style={styles.subtitleText}>{currentSubtitle}</Text>
+            </View>
+          )}
+
+          {/* Audio-Only Mode Placeholder */}
+          {audioOnlyMode && (
+            <View style={styles.audioOnlyPlaceholder}>
+              <View style={styles.audioOnlyIconContainer}>
+                <MaterialCommunityIcons name="music-circle" size={120} color={Colors.primary} />
+              </View>
+              <Text style={styles.audioOnlyTitle}>Audio Playing</Text>
+              <Text style={styles.audioOnlySubtitle}>{currentVideo.title || currentVideo.fileName}</Text>
+              <TouchableOpacity
+                style={styles.restoreVideoBtn}
+                onPress={() => setAudioOnlyMode(false)}
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons name="video" size={20} color="white" />
+                <Text style={styles.restoreVideoBtnText}>Tap to restore video</Text>
+              </TouchableOpacity>
             </View>
           )}
         </Reanimated.View>
@@ -536,6 +563,16 @@ export const VideoPlayerScreen: React.FC = () => {
                 </View>
 
                 <View style={styles.rightActions}>
+                  <TouchableOpacity
+                    onPress={() => setAudioOnlyMode(!audioOnlyMode)}
+                    style={styles.iconBtn}
+                  >
+                    <MaterialCommunityIcons
+                      name="music-circle"
+                      size={24}
+                      color={audioOnlyMode ? Colors.primary : 'white'}
+                    />
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={handlePiP} style={styles.iconBtn}>
                     <MaterialIcons name="picture-in-picture-alt" size={24} color="white" />
                   </TouchableOpacity>
@@ -754,6 +791,55 @@ export const VideoPlayerScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'black' },
   videoContainer: { flex: 1, backgroundColor: 'black' },
+
+  // Audio-Only Mode Placeholder
+  audioOnlyPlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0a0a0a',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  audioOnlyIconContainer: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  audioOnlyTitle: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  audioOnlySubtitle: {
+    color: '#888',
+    fontSize: 14,
+    marginBottom: 32,
+    paddingHorizontal: 40,
+    textAlign: 'center',
+  },
+  restoreVideoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  restoreVideoBtnText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
 
   // Overlays
   controlsOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between', zIndex: 10 },
