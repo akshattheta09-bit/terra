@@ -53,6 +53,7 @@ import {
   toggleShuffle as toggleServiceShuffle,
   getVideoAtIndex,
 } from '../services/VideoPlaybackService';
+import SleepTimerService from '../services/SleepTimerService';
 import ProScrubber from '../components/Player/ProScrubber';
 
 // Gesture & Animation Imports
@@ -294,6 +295,20 @@ export const VideoPlayerScreen: React.FC = () => {
         Alert.alert("PiP Mode", "Minimize the app to enter Picture-in-Picture.");
       }
     }
+  };
+
+  const showSleepTimerOptions = () => {
+    Alert.alert(
+      "Sleep Timer",
+      "Stop playback after...",
+      [
+        { text: "15 Minutes", onPress: () => player && SleepTimerService.startTimer(15, player) },
+        { text: "30 Minutes", onPress: () => player && SleepTimerService.startTimer(30, player) },
+        { text: "60 Minutes", onPress: () => player && SleepTimerService.startTimer(60, player) },
+        { text: "Cancel Timer", onPress: () => SleepTimerService.cancelTimer(), style: "destructive" },
+        { text: "Close", style: "cancel" }
+      ]
+    );
   };
 
   const parseSRT = (content: string): Subtitle[] => {
@@ -716,6 +731,9 @@ export const VideoPlayerScreen: React.FC = () => {
                   </TouchableOpacity>
                   <TouchableOpacity onPress={handlePiP} style={styles.iconBtn}>
                     <MaterialIcons name="picture-in-picture-alt" size={24} color="white" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={showSleepTimerOptions} style={styles.iconBtn}>
+                    <MaterialCommunityIcons name="clock-outline" size={24} color="white" />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => setShowQueueModal(true)} style={styles.iconBtn}>
                     <MaterialIcons name="playlist-play" size={28} color="white" />
