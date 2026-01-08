@@ -25,6 +25,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { MaterialCommunityIcons, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useAppDispatch, useAppSelector } from '../hooks/useRedux';
 import {
@@ -540,6 +541,20 @@ export const VideoPlayerScreen: React.FC = () => {
       }
     }
   }, [currentIndex, videoQueue, dispatch]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Orientation
+  // ─────────────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    // Allow landscape for video player
+    ScreenOrientation.unlockAsync();
+
+    return () => {
+      // Restore portrait when leaving player
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    };
+  }, []);
 
   useEffect(() => {
     if (!player) return;

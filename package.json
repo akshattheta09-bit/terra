@@ -27,6 +27,7 @@
     "expo-font": "~13.0.1",
     "expo-linear-gradient": "~14.0.2",
     "expo-media-library": "~17.0.4",
+    "expo-screen-orientation": "~8.0.4",
     "expo-splash-screen": "~0.29.13",
     "expo-sqlite": "~15.1.4",
     "expo-status-bar": "~2.0.0",
